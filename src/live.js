@@ -190,6 +190,9 @@ export class LiveEngine {
     inst.bidSize = q.bidSize;
     inst.askSize = q.askSize;
     inst.stale = !!q.stale;
+    // 'ecb': Yahoo had no quote, so this is the ECB's once-a-day reference rate
+    inst.quoteSource = q.source || null;
+    inst.quoteAsOf = q.asOf || null;
     inst.quoteTime = q.time ? q.time * 1000 : null;
     inst.marketState = q.marketState;
     if (q.name && inst.cls === 'EQ') inst.name = q.name;

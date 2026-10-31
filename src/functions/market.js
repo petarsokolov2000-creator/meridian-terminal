@@ -9,7 +9,7 @@ import { fmtVal } from '../news.js';
 
 const quoteCols = (E, extra = []) => [
   { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
-  { label: 'Name', value: (i) => esc(i.name), cls: 'l dim name' },
+  { label: 'Name', value: (i) => esc(i.name) + (i.quoteSource === 'ecb' ? ` <span class="tag" title="Yahoo had no quote; ECB reference rate${i.quoteAsOf ? ` of ${esc(i.quoteAsOf)}` : ''}">ECB daily rate</span>` : ''), cls: 'l dim name' },
   { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last },
   { label: 'Net', value: (i) => netText(i), cls: 'r', cellCls: (i) => dir(i.chg) },
   { label: 'Chg', value: (i) => chgText(i), cls: 'r', cellCls: (i) => dir(i.chg) },

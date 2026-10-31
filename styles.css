@@ -240,6 +240,7 @@ a.sec:hover { text-decoration: underline; }
 .book .depth { width: 35%; }
 .book .depth span { display: block; height: 10px; opacity: 0.45; }
 .hl-big { color: var(--accent); font-weight: 700; }
+.tag { font-size: 10px; padding: 0 4px; border: 1px solid var(--accent); border-radius: 2px; color: var(--accent); }
 
 /* portfolio */
 .port-head { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 6px 8px; border-bottom: 1px solid var(--line); }

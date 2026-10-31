@@ -2,12 +2,13 @@
      node tools/update.mjs check   prints two lines: the installed version, then the newest
                                    published one (or "error: <reason>")
      node tools/update.mjs apply   downloads the newest version, unpacks it and runs its
-                                   installer (which keeps keys, settings and cache)
+                                   installer (which keeps keys, settings and cache);
+                                   with --restart (the in-app UPDATE command) it reopens Meridian
    Every run is logged to .cache/update.log, so a failed update is never silent. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -68,6 +69,18 @@ async function apply() {
   }
 }
 
+function reopen() {
+  const installed = path.join(process.env.LOCALAPPDATA || '', 'Meridian', 'app', 'Meridian.exe');
+  const exe = fs.existsSync(installed) ? installed : path.join(ROOT, 'Meridian.exe');
+  try {
+    if (fs.existsSync(exe)) spawn(exe, [], { cwd: path.dirname(exe), detached: true, stdio: 'ignore' }).unref();
+    else spawn(process.execPath, [path.join(ROOT, 'serve.mjs'), '--open'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    log(`reopened ${fs.existsSync(exe) ? exe : 'serve.mjs'}`);
+  } catch (err) {
+    log(`couldn't reopen Meridian: ${err.message}`);
+  }
+}
+
 const cmd = process.argv[2];
 try {
   if (cmd === 'check') {
@@ -78,9 +91,14 @@ try {
     console.log(v);
   } else if (cmd === 'apply') {
     log(`apply: from ${current() || 'none'}`);
-    await apply();
-    log('apply: done');
-    console.log('ok');
+    try {
+      await apply();
+      log('apply: done');
+      console.log('ok');
+    } finally {
+      // Started by UPDATE inside Meridian: reopen it (updated or not) once the installer is done.
+      if (process.argv.includes('--restart')) reopen();
+    }
   } else {
     console.error('usage: node tools/update.mjs check|apply');
     process.exit(2);

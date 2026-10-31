@@ -12,8 +12,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomInt, timingSafeEqual } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { exec } from 'node:child_process';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { exec, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createBackend } from './server/backend.mjs';
 import { liveSymbols } from './src/live-universe.js';
@@ -59,6 +59,9 @@ const keyStore = {
     }
   },
 };
+
+// The in-app UPDATE command can install updates itself (Windows, with the updater present).
+const canSelfUpdate = process.platform === 'win32' && !mock && existsSync(path.join(ROOT, 'tools', 'update.mjs'));
 
 const backend = createBackend({
   ...(mock ? { fetchImpl: mock.mockFetch, WebSocketImpl: mock.MockWebSocket } : {}),
@@ -172,6 +175,14 @@ http.createServer(async (req, res) => {
     setTimeout(() => process.exit(0), 100);
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/api/update') {
+    // UPDATE in the terminal: download and install the newest version, then reopen Meridian.
+    // The updater runs on its own, since installing stops this server. This PC only, JSON only.
+    if (!isLocal(req) || !/^application\/json\b/i.test(req.headers['content-type'] || '')) return send(res, 403, { error: 'Update Meridian from the PC running it.' });
+    if (!canSelfUpdate) return send(res, 400, { error: 'Updating from inside Meridian works on Windows only.' });
+    spawn(process.execPath, [path.join(ROOT, 'tools', 'update.mjs'), 'apply', '--restart'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    return send(res, 200, { ok: true });
+  }
   if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
     // Only this PC may change or remove a key; a phone on the Wi-Fi can't.
     if (/\/key$/.test(url.pathname) && !isLocal(req)) return send(res, 403, { error: 'Set API keys from the PC running Meridian.' });
@@ -184,7 +195,8 @@ http.createServer(async (req, res) => {
   }
   if (url.pathname.startsWith('/api/')) {
     try {
-      send(res, 200, await backend.get(url.pathname, url.searchParams));
+      const body = await backend.get(url.pathname, url.searchParams);
+      send(res, 200, url.pathname === '/api/version' ? { ...body, selfUpdate: canSelfUpdate } : body);
     } catch (err) {
       send(res, failure(err), { error: err.message });
     }

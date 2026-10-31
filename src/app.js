@@ -274,12 +274,30 @@ class App {
   }
 
   async checkUpdate(asked) {
+    const phone = !!window.AndroidNet;
     try {
       const v = await (await fetch('/api/version')).json();
-      if (v.updateAvailable) this.toast(`Meridian ${v.latest} is available (you have ${v.current}). Close Meridian and open it again from its icon to update.`, 'ok');
-      else if (asked) this.toast(v.current ? `Meridian ${v.current}${v.latest ? ' is the latest version.' : ' (couldn\'t reach GitHub to check for updates).'}` : 'This copy has no version number (run it from the installed Meridian icon to get updates).');
+      if (v.updateAvailable && asked && v.selfUpdate) return this.installUpdate(v);
+      if (v.updateAvailable) {
+        const how = phone
+          ? 'Close Meridian fully (phone Settings › Apps › Meridian › Force stop), open it again and wait about 15 seconds: it updates itself.'
+          : v.selfUpdate ? 'Type UPDATE to install it.' : 'Close Meridian and open it again from its icon to update.';
+        this.toast(`Meridian ${v.latest} is available (you have ${v.current}). ${how}`, 'ok');
+      } else if (asked) this.toast(v.current ? `Meridian ${v.current}${v.latest ? ' is the latest version.' : ' (couldn\'t reach GitHub to check for updates).'}` : 'This copy has no version number (run it from the installed Meridian icon to get updates).');
     } catch {
       if (asked) this.toast('Update check needs the Meridian server (open Meridian from its icon).', 'err');
+    }
+  }
+
+  // UPDATE on the PC: the server downloads and installs the new version, then reopens Meridian.
+  async installUpdate(v) {
+    try {
+      const res = await fetch('/api/update', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.error) return this.toast(body.error || `Update failed (server answered ${res.status})`, 'err');
+      this.toast(`Installing Meridian ${v.latest}… This window closes and Meridian reopens by itself in about a minute.`, 'ok');
+    } catch {
+      this.toast('The Meridian server is not running, so it can\'t update. Open Meridian from its icon.', 'err');
     }
   }
 

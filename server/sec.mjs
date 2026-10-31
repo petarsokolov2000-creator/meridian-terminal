@@ -1,8 +1,10 @@
 // SEC EDGAR: official filings for US-listed companies (annual and quarterly reports, current
 // reports, insider forms, proxies). Free, no key; the SEC asks every client to identify itself
-// in the User-Agent and to stay under 10 requests a second, which this easily does.
+// in the User-Agent as "name email" (requests without a contact email are refused with 403)
+// and to stay under 10 requests a second, which this easily does. The contact is the
+// project's public GitHub no-reply address, not anyone's personal email.
 
-const UA = 'MeridianTerminal/1.0 (personal market terminal; https://github.com/petarsokolov2000-creator/meridian-terminal)';
+const UA = 'Meridian Terminal 322796608+petarsokolov2000-creator@users.noreply.github.com';
 
 export function createSec({ fetchImpl = fetch } = {}) {
   const cache = new Map();
@@ -18,6 +20,9 @@ export function createSec({ fetchImpl = fetch } = {}) {
   };
   async function json(url) {
     const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
+    if (res.status === 403 || res.status === 429) {
+      throw Object.assign(new Error(`the SEC refused the request (${res.status}); it limits automated access, so try again in a few minutes`), { status: 503 });
+    }
     if (!res.ok) throw Object.assign(new Error(`SEC answered ${res.status}`), { status: res.status });
     return res.json();
   }

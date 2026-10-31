@@ -33,9 +33,47 @@ async function running() {
     return false;
   }
 }
+// A running Meridian (possibly one an older launcher left in the background) would block the
+// update: close it, newest servers politely, older ones by ending the process on our port.
+async function stopRunning() {
+  try {
+    await fetch('http://127.0.0.1:8173/api/shutdown', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(2000) });
+  } catch {
+    // older servers have no shutdown route
+  }
+  const settle = async () => {
+    for (let i = 0; i < 16 && (await running()); i++) await new Promise((r) => setTimeout(r, 250));
+  };
+  await settle();
+  if (await running()) {
+    try {
+      const lines = execFileSync('netstat', ['-ano', '-p', 'TCP'], { encoding: 'utf8' }).split(/\r?\n/);
+      for (const line of lines) {
+        const f = line.trim().split(/\s+/);
+        if (f.length >= 5 && f[1].endsWith(':8173') && f[3] === 'LISTENING') {
+          const who = execFileSync('tasklist', ['/FI', `PID eq ${f[4]}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
+          if (/^"node\.exe"/i.test(who.trim())) execFileSync('taskkill', ['/PID', f[4], '/F'], { stdio: 'ignore' });
+        }
+      }
+    } catch {
+      // nothing more we can do; reported below
+    }
+    await settle();
+  }
+  // Meridian's own browser windows, including ones Edge kept alive in the background.
+  try {
+    execFileSync('powershell.exe', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' OR Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*\\Meridian\\profile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"], { stdio: 'ignore' });
+  } catch {
+    // no such windows
+  }
+}
 if (await running()) {
-  console.error('Meridian is open. Close its window (and any "Start Meridian" console), then run the installer again.');
-  process.exit(1);
+  console.log('Closing the running Meridian so it can be updated...');
+  await stopRunning();
+  if (await running()) {
+    console.error('Meridian is still running and could not be closed. Restart the PC, then run the installer again.');
+    process.exit(1);
+  }
 }
 
 const csc = [

@@ -29,7 +29,9 @@ function quoteStrip(ctx) {
   return update;
 }
 
-const RANGES = { '1M': 21, '3M': 63, '6M': 126, '1Y': 261, YTD: null, '5D': 5 };
+const RANGES = { '1M': 21, '3M': 63, '6M': 126, '1Y': 261, YTD: null, '5D': 5, '2Y': 522, '5Y': 1305, MAX: null };
+// Ranges beyond the year of history loaded at start: real data only, fetched on demand.
+const LONG = { '2Y': '2y', '5Y': '5y', MAX: 'max' };
 
 register({
   code: 'DESC', aliases: ['DES', 'D'], name: 'Description & key data', cat: 'Equity', sec: true,
@@ -85,7 +87,7 @@ register({
 
 register({
   code: 'CHART', aliases: ['GP', 'G', 'GPO'], name: 'Price chart with studies', cat: 'Equity', sec: true,
-  help: 'CHART [5D|1M|3M|6M|YTD|1Y] [CANDLE|OHLC|LINE|AREA] [SMA20 SMA50 EMA20 BB RSI MACD] [VS <sym>…]',
+  help: 'CHART [5D|1M|3M|6M|YTD|1Y|2Y|5Y|MAX] [CANDLE|OHLC|LINE|AREA] [SMA20 SMA50 EMA20 BB RSI MACD] [VS <sym>…]',
   run(ctx) {
     const s = ctx.sec;
     const E = ctx.engine;
@@ -111,7 +113,8 @@ register({
     const chart = new PriceChart(host);
     const btn = (k, label, on) => `<button class="tb ${on ? 'on' : ''}" data-k="${k}">${label}</button>`;
     const drawBar = () => {
-      bar.innerHTML = Object.keys(RANGES).map((r) => btn(`r:${r}`, r, st.range === r)).join('') + '<span class="sep"></span>' +
+      bar.innerHTML = Object.keys(RANGES).filter((r) => !LONG[r] || E.longHistory).map((r) => btn(`r:${r}`, r, st.range === r)).join('') +
+        (LONG[st.range] && !E.longHistory?.(s.sym, LONG[st.range]) ? '<span class="dim"> loading…</span>' : '') + '<span class="sep"></span>' +
         ['candle', 'ohlc', 'line', 'area'].map((t) => btn(`t:${t}`, t.toUpperCase(), st.type === t)).join('') + '<span class="sep"></span>' +
         btn('s:sma', 'SMA 20/50', st.sma.length > 0) + btn('s:bb', 'BOLL', st.bb) + btn('s:rsi', 'RSI', st.rsi) + btn('s:macd', 'MACD', st.macd) +
         (st.compare.length ? `<span class="sep"></span><span class="dim">vs ${st.compare.join(', ')}</span>` : '');
@@ -129,17 +132,33 @@ register({
       drawBar();
       draw(false);
     });
+    // Daily bars for the chosen range: the long ranges come from a separate, larger download
+    // (weekly bars for MAX) and fall back to the year already loaded until it arrives.
+    const source = (sym) => {
+      const today = E.daily(sym);
+      const long = LONG[st.range] && E.longHistory ? E.longHistory(sym, LONG[st.range]) : null;
+      return long ? [...long, today[today.length - 1]] : today;
+    };
+    let hadLong = false;
     const draw = (keep = true) => {
-      const all = E.daily(s.sym);
-      const n = st.range === 'YTD' ? all.filter((b) => b.t >= `${E.date.slice(0, 4)}-01-01`).length : RANGES[st.range];
+      const all = source(s.sym);
+      const isLong = all.length > E.daily(s.sym).length;
+      if (isLong && !hadLong) {
+        // the long history just arrived: show its full window, not the one-year view
+        hadLong = true;
+        keep = false;
+        drawBar();
+      }
+      if (!LONG[st.range]) hadLong = false;
+      const n = st.range === 'YTD' ? all.filter((b) => b.t >= `${E.date.slice(0, 4)}-01-01`).length : st.range === 'MAX' ? all.length : Math.min(all.length, RANGES[st.range]);
       // Load extra history in front of the window so moving averages start on screen.
       const lead = Math.max(0, ...st.sma, ...st.ema, st.bb ? 20 : 0, st.macd ? 35 : 0);
       const data = all.slice(-(n + lead));
-      const compare = st.compare.map((c) => ({ name: c, closes: E.daily(c).slice(-(n + lead)).map((b) => b.c) }));
+      const compare = st.compare.map((c) => ({ name: c, closes: source(c).slice(-(n + lead)).map((b) => b.c) }));
       chart.setData(data, {
         type: st.type, dp: s.dp, window: n, keepView: keep, ref: s.prevClose,
         studies: { sma: st.sma, ema: st.ema, bb: st.bb, rsi: st.rsi, macd: st.macd },
-        compare, label: (i, full) => (full ? data[i]?.t : data[i]?.t.slice(5)) ?? '',
+        compare, label: (i, full) => (full ? data[i]?.t : n > 300 ? data[i]?.t.slice(0, 7) : data[i]?.t.slice(5)) ?? '',
       });
     };
     drawBar();

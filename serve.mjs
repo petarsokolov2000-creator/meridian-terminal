@@ -98,32 +98,43 @@ function authorized(req, url) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 let historyMem = null;
-async function allHistory() {
-  const file = path.join(CACHE_DIR, `history-${today()}.json`);
-  if (historyMem?.day === today()) return historyMem.data;
-  try {
-    const data = JSON.parse(await readFile(file, 'utf8'));
-    historyMem = { day: today(), data };
-    return data;
-  } catch {
-    // not cached yet today
-  }
-  const data = {};
+const historyFailed = new Map(); // symbol -> day it failed, so a bad symbol isn't retried all day
+
+async function fetchHistory(symbols, data) {
   const errors = {};
-  await pool([...UNIVERSE], 6, async (s) => {
+  await pool(symbols, 6, async (s) => {
     try {
       const ch = await yahoo.chart(s, '1y', '1d');
       data[s] = { meta: ch.meta, bars: ch.bars.map(({ t, o, h, l, c, v }) => ({ t, o, h, l, c, v })) };
     } catch (err) {
       errors[s] = err.message;
+      historyFailed.set(s, today());
     }
   });
-  if (Object.keys(data).length > UNIVERSE.size * 0.8) {
-    await mkdir(CACHE_DIR, { recursive: true });
-    await writeFile(file, JSON.stringify(data));
-    historyMem = { day: today(), data };
-  }
   if (Object.keys(errors).length) console.warn(`History missing for ${Object.keys(errors).length} symbols:`, Object.entries(errors).slice(0, 5));
+}
+
+async function allHistory() {
+  const file = path.join(CACHE_DIR, `history-${today()}.json`);
+  let data = historyMem?.day === today() ? historyMem.data : null;
+  if (!data) {
+    try {
+      data = JSON.parse(await readFile(file, 'utf8'));
+    } catch {
+      data = {};
+    }
+  }
+  // Fetch whatever today's cache lacks (all of it on the first start of the day, or symbols
+  // a newer version added), skipping ones that already failed today.
+  const missing = [...UNIVERSE].filter((s) => !data[s] && historyFailed.get(s) !== today());
+  if (missing.length) {
+    await fetchHistory(missing, data);
+    if (Object.keys(data).length > UNIVERSE.size * 0.8) {
+      await mkdir(CACHE_DIR, { recursive: true });
+      await writeFile(file, JSON.stringify(data));
+    }
+  }
+  historyMem = { day: today(), data };
   return data;
 }
 
@@ -185,12 +196,25 @@ function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
 }
-const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) => s && UNIVERSE.has(s)).slice(0, 200);
 const oneSym = (v) => (/^[\w^=.\-/:]{1,24}$/.test(v || '') ? v : null);
+// Any well-formed Yahoo symbol: the built-in list plus whatever tickers the user added.
+const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) => oneSym(s)).slice(0, 320);
 
 const routes = {
   '/api/status': async () => ({ ok: true, live: true, mock: !!process.env.MERIDIAN_MOCK }),
   '/api/history': async () => allHistory(),
+  '/api/search': async (q) => {
+    const term = String(q.get('q') || '').trim().slice(0, 40);
+    return term.length < 1 ? [] : yahoo.search(term);
+  },
+  // One instrument outside the built-in list: a year of daily bars plus its metadata.
+  '/api/instrument': async (q) => {
+    const s = oneSym(q.get('symbol'));
+    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
+    const ch = await yahoo.chart(s, '1y', '1d');
+    if (!ch.bars.length) throw Object.assign(new Error(`Yahoo has no price history for ${s}`), { status: 404 });
+    return { meta: ch.meta, bars: ch.bars.map(({ t, o, h, l, c, v }) => ({ t, o, h, l, c, v })) };
+  },
   '/api/quotes': async (q) => {
     const want = syms(q.get('symbols'));
     const r = await yahoo.quotes(want);

@@ -39,8 +39,12 @@ register({
     const key = `watch:${E.mode}`;
     let list = store(key, E.defaults.watch);
     const [op, sym] = ctx.args;
+    if (op && sym && /^ADD$/i.test(op) && !E.get(sym) && E.lookup) {
+      // a ticker Meridian doesn't have yet: load it, then add it
+      E.lookup(sym).then((inst) => ctx.app.run(`WATCH ADD ${inst.sym}`, ctx.panel)).catch((err) => ctx.app.toast(`Couldn't add ${sym.toUpperCase()}: ${err.message}`, 'err'));
+    }
     if (op && sym) {
-      const s = sym.toUpperCase();
+      const s = E.get(sym)?.sym || sym.toUpperCase();
       if (/^ADD$/i.test(op) && E.get(s) && !list.includes(s)) list.push(s);
       if (/^(DEL|RM|REMOVE)$/i.test(op)) list = list.filter((x) => x !== s);
       save(key, list);

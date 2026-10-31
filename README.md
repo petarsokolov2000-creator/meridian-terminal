@@ -26,6 +26,17 @@ icon on your Desktop. You only need it once: after that Meridian updates itself.
 there's a newer version, asks whether to install it. Type `UPDATE` in the terminal to see
 your version.
 
+## Any ticker
+
+Type any symbol Yahoo Finance knows and press Enter: `PLTR`, `SHOP.TO` (Toronto), `7203.T`
+(Tokyo), `VOD.L` (London), `^IXIC`, `BTC-EUR`, `CL=F`… Meridian loads it on the spot and
+remembers it. Don't know the symbol? Start typing the company name; the suggestions include
+matches from every exchange (marked "add"). `WATCH ADD <symbol>` works for any of them too.
+
+Built in: about 117 stocks, 13 ETFs, 19 indices, 20 FX pairs, 19 commodities, 11 coins and the
+US and euro-area yield curves. Charts go back 1 year by default; `2Y`, `5Y` and `MAX` load
+longer history when you pick them.
+
 ## Start it (Windows): details
 
 **Install (once):** double-click **`Install Meridian.cmd`**, from wherever you downloaded or
@@ -107,8 +118,8 @@ What real mode has, and what free data can't provide:
 
 | Real (Yahoo Finance) | Not available free, so handled honestly |
 | --- | --- |
-| Quotes for 74 large-cap stocks, 11 indices, 12 FX pairs, 12 futures, 6 coins; US and euro-area yield curves | Individual euro countries' curves (the ECB publishes euro-area aggregates); UK/Japan curves |
-| A year of daily history, today's 1-minute bars; US economic releases with FRED | Economists' consensus forecasts for releases |
+| Quotes for ~117 large-cap stocks, 13 ETFs, 19 indices, 20 FX pairs, 19 futures, 11 coins, plus any ticker you type; US and euro-area yield curves | Individual euro countries' curves (the ECB publishes euro-area aggregates); UK/Japan curves |
+| Daily history up to the full record (`CHART MAX`), today's 1-minute bars; US economic releases with FRED | Economists' consensus forecasts for releases |
 | Headlines with links to the full article | Market depth (`BOOK` shows best bid/ask only) and trade-by-trade prints (`TAPE` shows observed price changes) |
 | Option chains with quoted IV (`OPT`), fundamentals (`FIN`), analyst ratings (`ANLY`), business descriptions | |
 

@@ -49,7 +49,7 @@ function series(s, n, stepSec, end, vol) {
 function chart(s, range, interval) {
   const now = Math.floor(Date.now() / 1000);
   const daily = interval === '1d' || interval === '1wk';
-  const n = daily ? 252 : 120;
+  const n = !daily ? 120 : { '2y': 504, '5y': 1260, max: 700 }[range] || 252;
   const d = series(s, n, daily ? 86400 : 60, now, daily ? 0.03 : 0.003);
   const last = d.c[d.c.length - 1];
   return {
@@ -119,9 +119,10 @@ function summary(s) {
   };
 }
 
-function news(q) {
+function news(q, wantQuotes) {
   const now = Math.floor(Date.now() / 1000);
-  return { news: Array.from({ length: 8 }, (_, i) => ({ uuid: `${q}-${i}`, title: `Mock headline ${i + 1} about ${q}`, publisher: 'Mock Wire', link: 'https://example.com/story', providerPublishTime: now - i * 1800, relatedTickers: [q] })) };
+  const quotes = wantQuotes ? [{ symbol: q.toUpperCase(), shortname: `${q.toUpperCase()} Mock Inc`, quoteType: 'EQUITY', exchDisp: 'NASDAQ' }, { symbol: `${q.toUpperCase()}.TO`, shortname: `${q.toUpperCase()} Mock Canada`, quoteType: 'EQUITY', exchDisp: 'Toronto' }] : [];
+  return { quotes, news: Array.from({ length: 8 }, (_, i) => ({ uuid: `${q}-${i}`, title: `Mock headline ${i + 1} about ${q}`, publisher: 'Mock Wire', link: 'https://example.com/story', providerPublishTime: now - i * 1800, relatedTickers: [q] })) };
 }
 
 // ---- official rates (Treasury CSV, ECB CSV, Frankfurter) and FRED ----------------------------
@@ -257,6 +258,6 @@ export async function mockFetch(url) {
   if (u.pathname === '/v7/finance/quote') return ok(quote(u.searchParams.get('symbols').split(',').filter((x) => x !== 'KRW=X')));
   if ((m = u.pathname.match(/^\/v7\/finance\/options\/(.+)$/))) return ok(options(decodeURIComponent(m[1])));
   if ((m = u.pathname.match(/^\/v10\/finance\/quoteSummary\/(.+)$/))) return ok(summary(decodeURIComponent(m[1])));
-  if (u.pathname === '/v1/finance/search') return ok(news(u.searchParams.get('q')));
+  if (u.pathname === '/v1/finance/search') return ok(news(u.searchParams.get('q'), Number(u.searchParams.get('quotesCount')) > 0));
   return new Response('not found', { status: 404 });
 }

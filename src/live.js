@@ -3,11 +3,33 @@
 // fetch Yahoo Finance. Quotes refresh every 15 s; intraday bars, fundamentals and per-ticker
 // news load when a panel asks for them.
 
-import { LIVE_EQUITIES, LIVE_INDICES, LIVE_FX, LIVE_COMMODITIES, LIVE_CRYPTO, LIVE_BONDS, CURVE_TENORS, finnhubSymbol } from './live-universe.js';
+import { LIVE_EQUITIES, LIVE_ETFS, LIVE_INDICES, LIVE_FX, LIVE_COMMODITIES, LIVE_CRYPTO, LIVE_BONDS, CURVE_TENORS, finnhubSymbol } from './live-universe.js';
 import { SESSION_MIN } from './engine.js';
 import { logReturns } from './studies.js';
 
 const QUOTE_MS = 15000;
+const EXTRA_KEY = 'meridian:extra-syms'; // tickers the user added beyond the built-in list
+// Yahoo's sector names -> the terminal's
+const YAHOO_SECTORS = {
+  Technology: 'Technology', 'Financial Services': 'Financials', Healthcare: 'Health Care', Energy: 'Energy', Industrials: 'Industrials',
+  'Consumer Cyclical': 'Consumer Disc.', 'Consumer Defensive': 'Consumer Staples', 'Basic Materials': 'Materials', Utilities: 'Utilities',
+  'Communication Services': 'Communication', 'Real Estate': 'Real Estate',
+};
+const regionOf = (tz) => (/^America/.test(tz || '') ? 'US' : /^Europe/.test(tz || '') ? 'EU' : /^(Asia|Australia)/.test(tz || '') ? 'ASIA' : 'US');
+function readExtras() {
+  try {
+    return JSON.parse(localStorage.getItem(EXTRA_KEY) || '[]').filter((x) => typeof x === 'string');
+  } catch {
+    return [];
+  }
+}
+function writeExtras(list) {
+  try {
+    localStorage.setItem(EXTRA_KEY, JSON.stringify(list.slice(-80)));
+  } catch {
+    // storage unavailable: the ticker just isn't remembered
+  }
+}
 const INTRADAY_MS = 60000;
 const NEWS_MS = 5 * 60000;
 const MARKET_NEWS = [['stock market', 'Markets'], ['economy', 'Economy'], ['federal reserve', 'Central Banks'], ['oil prices', 'Commodities'], ['bitcoin', 'Crypto'], ['treasury yields', 'Rates'], ['dollar currency', 'FX'], ['earnings', 'Earnings']];
@@ -73,13 +95,9 @@ export class LiveEngine {
 
   async init(onProgress = () => {}) {
     const t0 = performance.now();
-    const add = (row, cls, extra = {}) => {
-      const inst = { ysym: row[0], sym: row[1], cls, prints: [], history: [], ...extra };
-      this.instruments.push(inst);
-      this.bySym.set(inst.sym, inst);
-      this.bySym.set(inst.ysym.toUpperCase(), inst);
-    };
+    const add = (row, cls, extra = {}) => this.register({ ysym: row[0], sym: row[1], cls, ...extra });
     for (const r of LIVE_EQUITIES) add(r, 'EQ', { sector: r[2], region: r[3] });
+    for (const r of LIVE_ETFS) add(r, 'EQ', { name: r[2], sector: 'ETF', region: 'US', etf: true });
     for (const r of LIVE_INDICES) add(r, 'IDX', { name: r[2], region: r[3] });
     for (const r of LIVE_FX) add(r, 'FX', { name: r[2], ccy: r[1].slice(3) });
     for (const r of LIVE_COMMODITIES) add(r, 'CMDTY', { name: r[2], unit: r[3], ccy: 'USD' });
@@ -90,16 +108,7 @@ export class LiveEngine {
     const hist = await api('/api/history');
     for (const inst of this.instruments) {
       const h = hist[inst.ysym];
-      if (!h || !h.bars?.length) continue;
-      const tz = h.meta.tz || 'America/New_York';
-      const today = dayIn(tz, Date.now());
-      const scale = this.yieldScale(inst, h.meta.price ?? h.bars[h.bars.length - 1].c);
-      // Today's partial bar is rebuilt from live quotes, so it leaves the history.
-      inst.history = h.bars.filter((b) => b.t < today).map((b) => ({ t: b.t, o: b.o * scale, h: b.h * scale, l: b.l * scale, c: b.c * scale, v: b.v }));
-      inst.tz = tz;
-      inst.name ||= h.meta.name;
-      inst.ccy ||= h.meta.currency;
-      inst.meta = h.meta;
+      if (h && h.bars?.length) this.setHistory(inst, h);
     }
     const missing = this.instruments.filter((i) => i.history.length < 30);
     this.instruments = this.instruments.filter((i) => i.history.length >= 30);
@@ -110,6 +119,12 @@ export class LiveEngine {
     this.missing = missing.map((i) => i.sym);
     if (this.instruments.length < 20) throw new Error('Yahoo returned too little history to run on real data');
     this.equities = this.instruments.filter((i) => i.cls === 'EQ');
+    // Tickers added in earlier sessions come back too (a few at a time).
+    const extras = readExtras().filter((s) => !this.get(s));
+    if (extras.length) {
+      onProgress(`Loading your ${extras.length} added ticker${extras.length === 1 ? '' : 's'}…`);
+      for (let i = 0; i < extras.length; i += 6) await Promise.all(extras.slice(i, i + 6).map((s) => this.lookup(s, { quiet: true }).catch(() => null)));
+    }
 
     onProgress('Loading official yield curves (US Treasury, ECB)…');
     await this.loadRates().catch((err) => (this.ratesInfo.treasuryError = err.message));
@@ -227,10 +242,10 @@ export class LiveEngine {
     }
   }
 
-  computeStats() {
+  computeStats(only) {
     const bench = this.get(this.defaults.bench);
     const bR = bench ? logReturns(bench.history.map((b) => b.c)) : [];
-    for (const inst of this.instruments) {
+    for (const inst of only ? [only] : this.instruments) {
       const h = inst.history;
       inst.hi52 ??= Math.max(...h.map((b) => b.h));
       inst.lo52 ??= Math.min(...h.map((b) => b.l));
@@ -255,6 +270,113 @@ export class LiveEngine {
         inst.histBeta = cov / vr;
       }
     }
+  }
+
+  // ---------------------------------------------------------------- instruments on demand
+
+  register(inst) {
+    Object.assign(inst, { prints: inst.prints || [], history: inst.history || [] });
+    this.instruments.push(inst);
+    this.bySym.set(inst.sym, inst);
+    this.bySym.set(inst.ysym.toUpperCase(), inst);
+    return inst;
+  }
+
+  setHistory(inst, h) {
+    const tz = h.meta.tz || 'America/New_York';
+    const today = dayIn(tz, Date.now());
+    const scale = this.yieldScale(inst, h.meta.price ?? h.bars[h.bars.length - 1].c);
+    // Today's partial bar is rebuilt from live quotes, so it leaves the history.
+    inst.history = h.bars.filter((b) => b.t < today).map((b) => ({ t: b.t, o: b.o * scale, h: b.h * scale, l: b.l * scale, c: b.c * scale, v: b.v }));
+    inst.tz = tz;
+    inst.name ||= h.meta.name;
+    inst.ccy ||= h.meta.currency;
+    inst.meta = h.meta;
+  }
+
+  // Loads any Yahoo symbol (e.g. PLTR, SHOP.TO, 7203.T, ^IXIC, BTC-EUR) as a new instrument,
+  // and remembers it for next time. Resolves to the instrument; rejects if Yahoo has no data.
+  async lookup(raw, { quiet = false } = {}) {
+    const ysym = String(raw).trim().toUpperCase();
+    const known = this.get(ysym);
+    if (known) return known;
+    if (!/^[\w^=.\-/:]{1,24}$/.test(ysym)) throw new Error(`"${raw}" isn't a ticker`);
+    this.pendingLookups ||= new Map();
+    if (this.pendingLookups.has(ysym)) return this.pendingLookups.get(ysym);
+    const job = (async () => {
+      const h = await api(`/api/instrument?symbol=${encodeURIComponent(ysym)}`);
+      const type = String(h.meta.type || '').toUpperCase();
+      const cls = { INDEX: 'IDX', CURRENCY: 'FX', CRYPTOCURRENCY: 'CRYPTO', FUTURE: 'CMDTY' }[type] || 'EQ';
+      const inst = this.register({
+        ysym, sym: ysym, cls, name: h.meta.name || ysym, region: regionOf(h.meta.tz),
+        sector: type === 'ETF' ? 'ETF' : type === 'MUTUALFUND' ? 'Fund' : 'Other', etf: type === 'ETF', added: true,
+        ccy: h.meta.currency || (cls === 'FX' ? ysym.replace('=X', '').slice(-3) : 'USD'),
+      });
+      this.setHistory(inst, h);
+      if (inst.history.length < 2) {
+        this.unregister(inst);
+        throw new Error(`Yahoo has too little history for ${ysym}`);
+      }
+      const m = h.meta;
+      this.applyQuote(inst, { price: m.price ?? inst.history[inst.history.length - 1].c, prevClose: m.prevClose, high: m.high, low: m.low, volume: m.volume, hi52: m.hi52, lo52: m.lo52, time: m.time });
+      this.computeStats(inst);
+      if (cls === 'EQ') this.equities = this.instruments.filter((i) => i.cls === 'EQ');
+      const fh = finnhubSymbol(ysym, cls);
+      if (fh && !this.byFh.has(fh)) {
+        inst.fhsym = fh;
+        this.byFh.set(fh, inst);
+      }
+      if (!readExtras().includes(ysym)) writeExtras([...readExtras(), ysym]);
+      // Stocks get their real sector (and business summary) from the profile.
+      if (cls === 'EQ' && !inst.etf) {
+        this.profile(ysym).then((p) => {
+          if (p.sector) inst.sector = YAHOO_SECTORS[p.sector] || p.sector;
+        }).catch(() => {});
+      }
+      if (!quiet) this.emit('added', inst);
+      return inst;
+    })();
+    this.pendingLookups.set(ysym, job);
+    try {
+      return await job;
+    } finally {
+      this.pendingLookups.delete(ysym);
+    }
+  }
+
+  unregister(inst) {
+    this.instruments = this.instruments.filter((i) => i !== inst);
+    this.bySym.delete(inst.sym);
+    this.bySym.delete(inst.ysym.toUpperCase());
+  }
+
+  // Yahoo's symbol search, for autocomplete of anything not in the terminal yet.
+  async searchRemote(q) {
+    try {
+      return await api(`/api/search?q=${encodeURIComponent(q)}`);
+    } catch {
+      return [];
+    }
+  }
+
+  // Longer history than the default year: '2y' / '5y' daily, 'max' weekly. Loads in the
+  // background and returns null until it has arrived.
+  longHistory(sym, range) {
+    const inst = this.get(sym);
+    if (!inst) return null;
+    this.longCache ||= new Map();
+    const key = `${inst.sym}:${range}`;
+    const c = this.longCache.get(key);
+    if (c) return c.bars;
+    const entry = { bars: null };
+    this.longCache.set(key, entry);
+    api(`/api/chart?symbol=${encodeURIComponent(inst.ysym)}&range=${range}`).then((r) => {
+      const scale = this.yieldScale(inst, r.meta.price ?? 0);
+      const day = (ts) => dayIn(inst.tz || 'America/New_York', ts * 1000);
+      const today = dayIn(inst.tz || 'America/New_York', Date.now());
+      entry.bars = r.bars.map((b) => ({ t: day(b.ts), o: b.o * scale, h: b.h * scale, l: b.l * scale, c: b.c * scale, v: b.v })).filter((b) => b.t < today);
+    }).catch(() => this.longCache.delete(key));
+    return null;
   }
 
   // ---------------------------------------------------------------- news

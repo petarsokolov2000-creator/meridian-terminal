@@ -170,6 +170,17 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
+  // ---- symbol search -------------------------------------------------------------------------
+
+  async function search(q) {
+    return cached(`search:${q}`, 10 * 60e3, async () => {
+      const data = await json(`${Q2}/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0&enableFuzzyQuery=false`);
+      return (data.quotes || []).filter((x) => x.symbol && x.quoteType).map((x) => ({
+        symbol: x.symbol, name: x.longname || x.shortname || x.symbol, type: x.quoteType, exchange: x.exchDisp || x.exchange || '',
+      }));
+    });
+  }
+
   // ---- fundamentals --------------------------------------------------------------------------
 
   async function profile(symbol) {
@@ -219,7 +230,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { chart, quotes, news, profile, options, normalizeChart, normalizeQuote };
+  return { chart, quotes, news, search, profile, options, normalizeChart, normalizeQuote };
 }
 
 export async function pool(items, size, fn) {

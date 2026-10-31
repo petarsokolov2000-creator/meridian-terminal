@@ -197,6 +197,7 @@ class App {
     // Commands that are not panel functions.
     if (up[0] === 'BUY' || up[0] === 'SELL') {
       const [sym, qty] = this.takeSec(toks.slice(1));
+      if (!sym && toks[1] && engine.lookup) return this.lookupThenRun(toks[1], raw, panel);
       if (!sym) return this.toast(`Usage: ${up[0]} <ticker> <quantity>`, 'err');
       const msg = trade(engine, up[0] === 'BUY' ? 1 : -1, sym.sym, Math.round(Number(qty[0])));
       this.toast(msg, /^(Bought|Sold)/.test(msg) ? 'ok' : 'err');
@@ -253,6 +254,8 @@ class App {
       } else rest = toks.slice(1);
     } else {
       const [s, r] = this.takeSec(toks);
+      // Real data: any Yahoo symbol works, loaded the first time it's typed.
+      if (!s && engine.lookup) return this.lookupThenRun(toks[0], raw, panel);
       if (!s) return this.toast(`Unknown function or security: ${raw}`, 'err');
       sec = s;
       def = r.length && resolve(r[0]) ? resolve(r[0]) : null;
@@ -304,6 +307,17 @@ class App {
     } catch {
       this.toast('The Meridian server is not running (start it with Start Meridian.cmd).', 'err');
     }
+  }
+
+  async lookupThenRun(sym, raw, panel) {
+    this.toast(`Looking up ${sym.toUpperCase()} on Yahoo Finance…`);
+    try {
+      const inst = await engine.lookup(sym);
+      this.toast(`Added ${inst.sym} (${inst.name}). It stays in Meridian from now on.`, 'ok');
+    } catch (err) {
+      return this.toast(`Couldn't find ${sym.toUpperCase()}: ${err.message}. Try the company name to search.`, 'err');
+    }
+    this.run(raw, panel);
   }
 
   // Take the leading security from a token list (symbols may contain a space, e.g. "C 1").
@@ -420,10 +434,22 @@ class App {
     }
     const fns = [...FUNCTIONS.values()].filter((f) => f.code.startsWith(last) || (f.aliases || []).some((a) => a === last)).slice(0, 6);
     const secs = engine.search(last).slice(0, 8);
+    // Anything else Yahoo knows (any exchange), fetched as you pause typing.
+    const remote = (this.remote?.q === last ? this.remote.items : []).filter((r) => !engine.get(r.symbol)).slice(0, 6);
     const items = [
       ...fns.map((f) => `<li data-v="${f.code}"><span class="code">${f.code}</span><span>${esc(f.name)}</span><span class="kind">FUNC</span></li>`),
       ...secs.map((s) => `<li data-v="${esc(s.sym)}"><span class="code">${esc(s.sym)}</span><span>${esc(s.name)}</span><span class="kind">${s.cls}</span><span class="${dir(s.chg)} r">${px(s)} ${chgText(s)}</span></li>`),
+      ...remote.map((r) => `<li data-v="${esc(r.symbol)}"><span class="code">${esc(r.symbol)}</span><span>${esc(r.name)}</span><span class="kind">${esc(r.type)}</span><span class="dim r">${esc(r.exchange)} · add</span></li>`),
     ];
+    if (engine.searchRemote && last.length >= 2 && this.remote?.q !== last) {
+      clearTimeout(this.remoteTimer);
+      this.remoteTimer = setTimeout(async () => {
+        const q = last;
+        const found = await engine.searchRemote(q);
+        this.remote = { q, items: found };
+        if (this.cmd.value.split(/\s+/).pop() === q) this.renderSuggest();
+      }, 300);
+    }
     this.suggest.innerHTML = items.join('');
     this.suggest.hidden = !items.length;
     if (this.sel >= 0) this.suggest.querySelectorAll('li')[this.sel]?.classList.add('sel');

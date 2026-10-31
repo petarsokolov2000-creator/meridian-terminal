@@ -140,6 +140,97 @@ try {
   process.exit(1);
 }
 
+// ---- earlier copies --------------------------------------------------------------------------
+// Older installers built Meridian.exe inside the folder it was run from, and the Desktop icon
+// may still point there. Update every such copy in place too, so whichever one you open is
+// current, and bring its API keys over if the main copy has none.
+
+function meridianDir(dir) {
+  return fs.existsSync(path.join(dir, 'serve.mjs')) && fs.existsSync(path.join(dir, 'src', 'live.js'));
+}
+
+function shortcutTargets() {
+  const script = `
+$sh = New-Object -ComObject WScript.Shell
+$places = @([Environment]::GetFolderPath('Desktop'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'Meridian'))
+foreach ($dir in $places) {
+  if (Test-Path $dir) {
+    Get-ChildItem -Path $dir -Filter '*.lnk' | ForEach-Object { $sh.CreateShortcut($_.FullName).TargetPath }
+  }
+}`;
+  try {
+    return execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { encoding: 'utf8' })
+      .split(/\r?\n/).map((t) => t.trim()).filter(Boolean).map((t) => path.dirname(t));
+  } catch {
+    return [];
+  }
+}
+
+// Folders where a downloaded or extracted Meridian usually ends up (3 levels deep at most).
+function scanned() {
+  const home = process.env.USERPROFILE;
+  if (!home) return [];
+  const roots = ['Desktop', 'Documents', 'Downloads', 'OneDrive\\Desktop', 'OneDrive\\Documents'].map((d) => path.join(home, d));
+  const out = [];
+  const walk = (dir, depth) => {
+    if (meridianDir(dir)) {
+      out.push(dir);
+      return;
+    }
+    if (depth === 0) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') walk(path.join(dir, e.name), depth - 1);
+    }
+  };
+  for (const r of roots) walk(r, 3);
+  return out;
+}
+
+function buildExe(dir) {
+  const exe = path.join(dir, 'Meridian.exe');
+  try {
+    fs.rmSync(`${exe}.old`, { force: true });
+  } catch {
+    // in use: removed next time
+  }
+  if (fs.existsSync(exe)) fs.renameSync(exe, `${exe}.old`);
+  try {
+    execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+', `/out:${exe}`, `/win32icon:${ICO}`,
+      '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll',
+      path.join(dir, 'tools', 'Launcher.cs')], { stdio: 'ignore' });
+  } catch (err) {
+    if (fs.existsSync(`${exe}.old`)) fs.renameSync(`${exe}.old`, exe);
+    throw err;
+  }
+}
+
+const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+const earlier = [...new Set([...shortcutTargets(), ...scanned()].map((d) => path.resolve(d)))]
+  .filter((d) => meridianDir(d) && !same(d, ROOT) && !same(d, SOURCE));
+if (earlier.length) {
+  console.log(`     Updating ${earlier.length} earlier cop${earlier.length === 1 ? 'y' : 'ies'} of Meridian as well...`);
+  for (const dir of earlier) {
+    try {
+      for (const k of ['.finnhub-key', '.fred-key']) {
+        if (fs.existsSync(path.join(dir, k)) && !fs.existsSync(path.join(ROOT, k))) fs.copyFileSync(path.join(dir, k), path.join(ROOT, k));
+      }
+      for (const name of fs.readdirSync(SOURCE)) {
+        if (!LOCAL.has(name)) fs.cpSync(path.join(SOURCE, name), path.join(dir, name), { recursive: true, force: true });
+      }
+      if (fs.existsSync(path.join(dir, 'Meridian.exe'))) buildExe(dir);
+      console.log(`       updated ${dir}`);
+    } catch (err) {
+      console.log(`       couldn't update ${dir} (${err.message.split('\n')[0]}); it may be open. The Desktop icon uses the new copy.`);
+    }
+  }
+}
+
 console.log('4/4  Adding shortcuts...');
 // PowerShell's WScript.Shell creates .lnk files; the script goes in base64 to avoid quoting
 // trouble with spaces or apostrophes in folder names.

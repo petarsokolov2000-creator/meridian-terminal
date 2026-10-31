@@ -142,7 +142,7 @@ async function versionInfo() {
     let latest = null;
     if (!mock) {
       try {
-        const res = await fetch(`https://raw.githubusercontent.com/${REPO}/main/VERSION`, { signal: AbortSignal.timeout(5000) });
+        const res = await fetch(`https://raw.githubusercontent.com/${REPO}/main/VERSION?t=${Date.now()}`, { signal: AbortSignal.timeout(5000) });
         if (res.ok) latest = (await res.text()).trim().slice(0, 40) || null;
       } catch {
         // offline: no update check
@@ -283,6 +283,13 @@ http.createServer(async (req, res) => {
     } catch (err) {
       send(res, 400, { error: err.message });
     }
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/api/shutdown') {
+    // The launcher stops a leftover server before updating. Only from this PC, JSON only.
+    if (!isLocal(req) || !/^application\/json\b/i.test(req.headers['content-type'] || '')) return send(res, 403, { error: 'Not allowed' });
+    send(res, 200, { ok: true });
+    setTimeout(() => process.exit(0), 100);
     return;
   }
   const keyRoute = /^\/api\/(finnhub|fred)\/key$/.exec(url.pathname);

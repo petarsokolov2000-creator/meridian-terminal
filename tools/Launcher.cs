@@ -80,18 +80,24 @@ static class Program
         return null;
     }
 
-    // True while any browser process is running with Meridian's own profile folder.
+    // True while a browser window on Meridian's own profile folder is open.
     // (The first browser process can hand its window to another and exit early.)
     static bool WindowOpen()
     {
         try
         {
-            using (var q = new ManagementObjectSearcher("SELECT CommandLine FROM Win32_Process WHERE Name='msedge.exe' OR Name='chrome.exe'"))
+            using (var q = new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='msedge.exe' OR Name='chrome.exe'"))
             {
                 foreach (ManagementObject o in q.Get())
                 {
                     string cmd = o["CommandLine"] as string;
-                    if (cmd != null && cmd.IndexOf(Profile, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    if (cmd == null || cmd.IndexOf(Profile, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    try
+                    {
+                        // Only a visible window counts: Edge can keep running in the background.
+                        if (Process.GetProcessById(Convert.ToInt32(o["ProcessId"])).MainWindowHandle != IntPtr.Zero) return true;
+                    }
+                    catch (Exception) { /* the process just ended */ }
                 }
             }
         }
@@ -119,15 +125,6 @@ static class Program
         catch (Exception) { return ""; }
     }
 
-    static string Fetch(string url, int timeoutMs)
-    {
-        var req = (HttpWebRequest)WebRequest.Create(url);
-        req.Timeout = timeoutMs;
-        req.UserAgent = "Meridian";
-        using (var res = req.GetResponse())
-        using (var sr = new StreamReader(res.GetResponseStream())) return sr.ReadToEnd();
-    }
-
     static int RunHidden(string exe, string args, string dir, out string output)
     {
         var psi = new ProcessStartInfo(exe, args) { WorkingDirectory = dir, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -143,48 +140,70 @@ static class Program
         }
     }
 
-    // Offers the newest version from GitHub (only the VERSION file is fetched unless you say yes).
-    // Any failure just skips the update: Meridian still opens with what is installed.
-    static void CheckForUpdate(string node)
+    // Stops a Meridian server that is still running (for example one left behind by an
+    // earlier window): asks it to quit, then ends the node process listening on our port.
+    static void StopServer()
     {
-        string current = "";
-        try { current = File.ReadAllText(Path.Combine(Dir, "VERSION")).Trim(); } catch (Exception) { }
-        string latest;
-        try { latest = Fetch("https://raw.githubusercontent.com/" + Repo + "/main/VERSION", 4000).Trim(); }
-        catch (Exception) { return; } // offline or GitHub unreachable
-        if (latest.Length == 0 || latest.Length > 40 || latest == current) return;
-        if (MessageBox.Show("A new version of Meridian is available (" + latest + ").\n\nUpdate now? It takes about a minute. Your keys and settings stay.", Title, MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return;
-
-        string tmp = Path.Combine(Path.GetTempPath(), "meridian-update-" + Guid.NewGuid().ToString("N"));
         try
         {
-            Directory.CreateDirectory(tmp);
-            string zip = Path.Combine(tmp, "meridian.zip");
-            using (var wc = new WebClient())
-            {
-                wc.Headers.Add("User-Agent", "Meridian");
-                wc.DownloadFile("https://codeload.github.com/" + Repo + "/zip/refs/heads/main", zip);
-            }
+            var req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + Port + "/api/shutdown");
+            req.Method = "POST";
+            req.ContentType = "application/json";
+            req.Proxy = null;
+            req.Timeout = 2000;
+            byte[] body = System.Text.Encoding.UTF8.GetBytes("{}");
+            using (var st = req.GetRequestStream()) st.Write(body, 0, body.Length);
+            using (req.GetResponse()) { }
+        }
+        catch (Exception) { /* older servers have no shutdown route */ }
+        for (int i = 0; i < 16 && ServerUp(); i++) Thread.Sleep(250);
+        if (!ServerUp()) return;
+        try
+        {
             string output;
-            // Windows 10 and 11 include tar.exe, which extracts .zip files; PowerShell is the fallback.
-            string tar = Path.Combine(Environment.SystemDirectory, "tar.exe");
-            int code = File.Exists(tar)
-                ? RunHidden(tar, "-xf \"" + zip + "\" -C \"" + tmp + "\"", tmp, out output)
-                : RunHidden("powershell.exe", "-NoProfile -Command \"Expand-Archive -LiteralPath '" + zip + "' -DestinationPath '" + tmp + "' -Force\"", tmp, out output);
-            string src = Directory.GetDirectories(tmp).FirstOrDefault(d => File.Exists(Path.Combine(d, "tools", "install.mjs")));
-            if (code != 0 || src == null) throw new Exception("Couldn't unpack the download. " + output);
-            code = RunHidden(node, "tools\\install.mjs", src, out output);
-            if (code != 0) throw new Exception(output);
+            RunHidden("netstat.exe", "-ano -p TCP", Dir, out output);
+            foreach (string line in output.Split('\n'))
+            {
+                string[] f = line.Split(new[] { ' ', '\t', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                int pid;
+                if (f.Length >= 5 && f[1].EndsWith(":" + Port) && f[3] == "LISTENING" && int.TryParse(f[4], out pid))
+                {
+                    var p = Process.GetProcessById(pid);
+                    if (p.ProcessName.Equals("node", StringComparison.OrdinalIgnoreCase)) p.Kill();
+                }
+            }
+        }
+        catch (Exception) { /* nothing more we can do */ }
+        for (int i = 0; i < 16 && ServerUp(); i++) Thread.Sleep(250);
+    }
+
+    // Offers the newest published version. The check and download run in Node.js
+    // (tools/update.mjs), which logs every attempt to .cache\update.log.
+    static void CheckForUpdate(string node)
+    {
+        if (!File.Exists(Path.Combine(Dir, "tools", "update.mjs"))) return;
+        string output;
+        try { RunHidden(node, "tools\\update.mjs check", Dir, out output); }
+        catch (Exception) { return; }
+        string[] lines = output.Replace("\r", "").Split('\n');
+        if (lines.Length < 2) return;
+        string current = lines[0].Trim();
+        string latest = lines[1].Trim();
+        if (latest.Length == 0 || latest.StartsWith("error:") || latest == current) return; // offline or up to date
+        if (MessageBox.Show("A new version of Meridian is available (" + latest + ").\n\nUpdate now? It takes about a minute. Your keys and settings stay.", Title, MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return;
+        if (ServerUp()) StopServer();
+        if (ServerUp())
+        {
+            MessageBox.Show("Meridian is still running, so it can't be updated right now.\n\nClose every Meridian window, wait a few seconds, and open Meridian again.", Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        int code;
+        try { code = RunHidden(node, "tools\\update.mjs apply", Dir, out output); }
+        catch (Exception e) { code = 1; output = e.Message; }
+        if (code == 0)
             MessageBox.Show("Meridian is updated to " + latest + ".", Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception e)
-        {
-            MessageBox.Show("The update didn't finish, so Meridian opens with the version you have.\n\n" + e.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        finally
-        {
-            try { Directory.Delete(tmp, true); } catch (Exception) { /* temp folder; Windows cleans it eventually */ }
-        }
+        else
+            MessageBox.Show("The update didn't finish, so Meridian opens with the version you have.\n\n" + output.Trim() + "\n\nDetails: " + Path.Combine(Dir, ".cache", "update.log"), Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     static void Fail(string msg)
@@ -205,18 +224,18 @@ static class Program
                 return;
             }
 
+            string node = FindNode();
+            if (node == null)
+            {
+                if (MessageBox.Show("Meridian needs Node.js, which isn't installed.\n\nOpen nodejs.org to download it (choose the LTS version)?", Title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    Process.Start(new ProcessStartInfo("https://nodejs.org/") { UseShellExecute = true });
+                return;
+            }
+            // Every start, even when a server is still running from before.
+            CheckForUpdate(node);
+
             if (!ServerUp())
             {
-                string node = FindNode();
-                if (node == null)
-                {
-                    if (MessageBox.Show("Meridian needs Node.js, which isn't installed.\n\nOpen nodejs.org to download it (choose the LTS version)?", Title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-                        Process.Start(new ProcessStartInfo("https://nodejs.org/") { UseShellExecute = true });
-                    return;
-                }
-                // GitHub only accepts TLS 1.2+, which older .NET defaults leave off.
-                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
-                CheckForUpdate(node);
                 string cache = Path.Combine(Dir, ".cache");
                 Directory.CreateDirectory(cache);
                 string log = Path.Combine(cache, "server.log");
@@ -264,7 +283,7 @@ static class Program
             if (browser != null)
             {
                 Directory.CreateDirectory(Profile);
-                string bargs = "--app=" + url + " --user-data-dir=\"" + Profile + "\" --window-size=1600,1000 --no-first-run --no-default-browser-check";
+                string bargs = "--app=" + url + " --user-data-dir=\"" + Profile + "\" --window-size=1600,1000 --no-first-run --no-default-browser-check --disable-background-mode";
                 window = Process.Start(new ProcessStartInfo(browser, bargs) { UseShellExecute = false });
             }
             else

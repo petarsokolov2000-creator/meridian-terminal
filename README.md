@@ -4,7 +4,18 @@ A four-panel market terminal in the browser, built from scratch with no dependen
 and no build step. It runs on **real market data** from Yahoo Finance when started with
 its local server, and falls back to a **built-in simulation** otherwise.
 
-## Install (Windows)
+## Install or update (Windows), the quick way
+
+Press **Win + R**, paste this line, press **Enter**:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/petarsokolov2000-creator/meridian-terminal/main/update.ps1 | iex"
+```
+
+It downloads the newest Meridian, installs it (keeping your keys and settings) and puts the
+icon on your Desktop. You only need it once: after that Meridian updates itself.
+
+## Install (Windows), from the ZIP
 
 1. Download **[Meridian (ZIP)](https://github.com/petarsokolov2000-creator/meridian-terminal/archive/refs/heads/main.zip)**.
 2. Right-click the ZIP → **Extract All…**, open the extracted folder and double-click

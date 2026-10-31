@@ -575,6 +575,20 @@ export class LiveEngine {
     return this.profiles.get(inst.sym);
   }
 
+  // Company financials (cached per symbol by the server; these just pass through).
+  statements(sym, freq) {
+    return api(`/api/statements?symbol=${encodeURIComponent(this.get(sym).ysym)}&freq=${freq}`);
+  }
+  details(sym) {
+    return api(`/api/details?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  events(sym) {
+    return api(`/api/events?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  filings(sym) {
+    return api(`/api/filings?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+
   options(sym, date) {
     const inst = this.get(sym);
     return api(`/api/options?symbol=${encodeURIComponent(inst.ysym)}${date ? `&date=${date}` : ''}`);

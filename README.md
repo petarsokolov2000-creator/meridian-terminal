@@ -37,6 +37,19 @@ Built in: about 117 stocks, 13 ETFs, 19 indices, 20 FX pairs, 19 commodities, 11
 US and euro-area yield curves. Charts go back 1 year by default; `2Y`, `5Y` and `MAX` load
 longer history when you pick them.
 
+## Company financials (real data)
+
+| Command | What you get | Source |
+| --- | --- | --- |
+| `AAPL FIN` | Income statement, balance sheet and cash flow, **annual (5 years) or quarterly (8 quarters)**, with margins and change vs the prior period | Yahoo Finance |
+| `AAPL EPS` | Reported vs expected EPS (beats/misses), analysts' EPS and revenue estimates for this/next quarter and year | Yahoo Finance |
+| `AAPL HOLD` | Insider and institutional ownership, top institutions and funds, recent insider buys and sales | Yahoo Finance |
+| `AAPL DVD` | Every dividend on record, yearly totals and growth, trailing yield, stock splits | Yahoo Finance |
+| `AAPL KEYS` | Valuation multiples, margins and returns, balance-sheet ratios, short interest, moving averages, dividend data | Yahoo Finance |
+| `AAPL FILE` | Official SEC filings (10-K, 10-Q, 8-K, insider Forms 3/4/5, proxies, 13D/G) with links to the documents | SEC EDGAR |
+
+These also work for any ticker you add. SEC filings exist for companies listed in the US.
+
 ## Start it (Windows): details
 
 **Install (once):** double-click **`Install Meridian.cmd`**, from wherever you downloaded or
@@ -150,15 +163,15 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
   Bollinger, RSI, MACD, VWAP and volume. Includes crosshair, wheel zoom, drag pan,
   comparison mode, and an XY plot for curves and scatters.
 
-## Functions (33)
+## Functions (38)
 
 | Area | Codes |
 | --- | --- |
 | Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `ANLY` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `DVD` `KEYS` `ANLY` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
-| News | `NEWS` `CN` |
+| News | `NEWS` `CN` `FILE` |
 | Analytics | `OPT` `BETA` `VOLA` `CORR` `SCAT` |
 | Trading | `PORT` `ALRT` `BOOK` `TAPE` |
 | System | `HELP` |

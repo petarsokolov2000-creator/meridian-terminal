@@ -9,8 +9,8 @@ import { bs } from './security.js';
 const live = (code, fn) => (FUNCTIONS.get(code).live = fn);
 
 // Shows "Loading" until `promise` settles, then renders; update/destroy reach the result.
-function deferred(ctx, promise, render) {
-  const wait = el('div', 'empty', 'Loading from Yahoo Finance…');
+export function deferred(ctx, promise, render, source = 'Yahoo Finance') {
+  const wait = el('div', 'empty', `Loading from ${source}…`);
   ctx.el.appendChild(wait);
   let inner = null;
   let gone = false;
@@ -19,7 +19,7 @@ function deferred(ctx, promise, render) {
     wait.remove();
     inner = render(data) || null;
   }).catch((err) => {
-    if (!gone) wait.textContent = `Couldn't load this from Yahoo Finance: ${err.message}`;
+    if (!gone) wait.textContent = `Couldn't load this from ${source}: ${err.message}`;
   });
   return {
     update: () => inner?.update?.(),
@@ -37,7 +37,7 @@ function notEquity(ctx, what) {
   ctx.el.innerHTML = `<div class="empty">${esc(what)} is only available for stocks (${esc(ctx.sec.sym)} is not one).</div>`;
 }
 
-function strip(ctx) {
+export function strip(ctx) {
   const s = ctx.sec;
   const node = el('div', 'qstrip');
   ctx.el.appendChild(node);
@@ -50,7 +50,7 @@ function strip(ctx) {
   return update;
 }
 
-const kv = (k, v, cls = '') => `<div class="kv"><span>${k}</span><b class="${cls}">${v}</b></div>`;
+export const kv = (k, v, cls = '') => `<div class="kv"><span>${k}</span><b class="${cls}">${v}</b></div>`;
 const pctOf = (x, dp = 1) => (x == null ? '—' : `${num(x * 100, dp)}%`);
 
 live('DESC', (ctx) => {
@@ -59,28 +59,6 @@ live('DESC', (ctx) => {
   return deferred(ctx, ctx.engine.profile(ctx.sec.sym).catch(() => null), () => {
     ctx.el.innerHTML = '';
     return FUNCTIONS.get('DESC').run(ctx);
-  });
-});
-
-live('FIN', (ctx) => {
-  if (ctx.sec.cls !== 'EQ') return notEquity(ctx, 'Financial analysis');
-  const s = ctx.sec;
-  return deferred(ctx, ctx.engine.profile(s.sym), (p) => {
-    const inc = (p.income || []).filter((r) => r.revenue);
-    const year = (r) => new Date(r.end * 1000).getUTCFullYear();
-    const lines = [
-      ['Revenue', (r) => big(r.revenue)], ['Gross profit', (r) => big(r.grossProfit)], ['Gross margin', (r) => pctOf(r.grossProfit / r.revenue)],
-      ['Operating income', (r) => big(r.operatingIncome)], ['Operating margin', (r) => pctOf(r.operatingIncome / r.revenue)], ['Net income', (r) => big(r.netIncome)], ['Net margin', (r) => pctOf(r.netIncome / r.revenue)],
-    ];
-    const cap = s.marketCap;
-    ctx.el.innerHTML = `<div class="split2"><div class="pane"><h3>Income statement (${esc(s.ccy || '')}, fiscal years)</h3>${inc.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l"></th>${inc.map((r) => `<th class="r">FY${year(r)}</th>`).join('')}</tr></thead><tbody>
-      ${lines.map(([k, f]) => `<tr><td class="l">${k}</td>${inc.map((r) => `<td class="r">${f(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<p class="note">Yahoo returned no annual statements for this company.</p>'}</div>
-      <div class="pane"><h3>Trailing twelve months</h3><div class="facts">
-        ${[['Market cap', big(cap)], ['Enterprise value', big(p.ev)], ['P/E (ttm)', num(s.eps ? s.last / s.eps : null, 1)], ['Forward P/E', num(p.forwardPE, 1)], ['EV/EBITDA', num(p.evEbitda, 1)], ['P/B', num(p.priceToBook, 2)],
-          ['Revenue', big(p.revenue)], ['Revenue growth (yoy)', pctOf(p.revenueGrowth)], ['Gross margin', pctOf(p.grossMargin)], ['Operating margin', pctOf(p.operatingMargin)], ['Profit margin', pctOf(p.profitMargin)],
-          ['EBITDA', big(p.ebitda)], ['Free cash flow', big(p.fcf)], ['FCF yield', cap && p.fcf ? pctOf(p.fcf / cap) : '—'], ['ROE', pctOf(p.roe)], ['Total debt', big(p.debt)], ['Cash', big(p.cash)], ['Debt / equity', num(p.debtToEquity, 0)], ['Dividend yield', s.divYield ? `${num(s.divYield, 2)}%` : '—']]
-          .map(([k, v]) => kv(k, v)).join('')}
-      </div><p class="note">Source: Yahoo Finance. ${p.employees ? `${p.employees.toLocaleString('en-US')} employees · ` : ''}${esc(p.industry || '')}</p></div></div>`;
   });
 });
 

@@ -214,6 +214,103 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
+  // ---- financial statements, earnings, ownership, dividends -----------------------------------
+
+  // Line items per statement, as named in Yahoo's fundamentals time series (prefixed with
+  // "annual" or "quarterly" in the request).
+  const STATEMENTS = {
+    income: ['TotalRevenue', 'CostOfRevenue', 'GrossProfit', 'ResearchAndDevelopment', 'SellingGeneralAndAdministration', 'OperatingIncome', 'InterestExpense', 'PretaxIncome', 'TaxProvision', 'NetIncome', 'EBITDA', 'DilutedEPS', 'DilutedAverageShares'],
+    balance: ['CashAndCashEquivalents', 'CurrentAssets', 'TotalAssets', 'CurrentLiabilities', 'TotalDebt', 'NetDebt', 'TotalLiabilitiesNetMinorityInterest', 'StockholdersEquity', 'RetainedEarnings', 'WorkingCapital', 'OrdinarySharesNumber'],
+    cashflow: ['OperatingCashFlow', 'CapitalExpenditure', 'FreeCashFlow', 'StockBasedCompensation', 'InvestingCashFlow', 'RepurchaseOfCapitalStock', 'CashDividendsPaid', 'FinancingCashFlow'],
+  };
+
+  // { periods: ['2022-09-30', ...] (oldest first), rows: { TotalRevenue: { '2022-09-30': 3.9e11 } } }
+  async function statements(symbol, freq) {
+    const f = freq === 'quarterly' ? 'quarterly' : 'annual';
+    return cached(`stmt:${symbol}:${f}`, 6 * 60 * 60e3, async () => {
+      const types = Object.values(STATEMENTS).flat().map((t) => f + t).join(',');
+      const now = Math.floor(Date.now() / 1000);
+      const make = (crumb) => `${Q2}/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${now - 7 * 365 * 86400}&period2=${now + 86400}${crumb ? `&crumb=${encodeURIComponent(crumb)}` : ''}`;
+      let data;
+      try {
+        data = await json(make(null));
+      } catch (err) {
+        if (err.status !== 401 && err.status !== 403) throw err;
+        data = await withCrumb(make);
+      }
+      const rows = {};
+      const periods = new Set();
+      for (const r of data?.timeseries?.result || []) {
+        const type = r?.meta?.type?.[0];
+        // the values sit under a key named after the type (fall back to any other array)
+        const items = (type && r[type]) || Object.entries(r).find(([k, v]) => k !== 'meta' && k !== 'timestamp' && Array.isArray(v))?.[1] || [];
+        if (!type) continue;
+        const name = type.replace(/^(annual|quarterly)/, '');
+        for (const it of items) {
+          const v = raw(it?.reportedValue);
+          if (!it?.asOfDate || v == null) continue;
+          (rows[name] ||= {})[it.asOfDate] = v;
+          periods.add(it.asOfDate);
+        }
+      }
+      if (!periods.size) throw new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404);
+      return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency: null, layout: STATEMENTS };
+    });
+  }
+
+  // Earnings history and estimates, ownership, insider trades and key statistics.
+  async function details(symbol) {
+    return cached(`details:${symbol}`, 60 * 60e3, async () => {
+      const modules = 'earningsHistory,earningsTrend,majorHoldersBreakdown,institutionOwnership,fundOwnership,insiderTransactions,defaultKeyStatistics,summaryDetail,financialData,calendarEvents';
+      const data = await withCrumb((c) => `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&crumb=${encodeURIComponent(c)}`);
+      const r = data?.quoteSummary?.result?.[0];
+      if (!r) throw new YahooError(`No details for ${symbol}`, 404);
+      const ks = r.defaultKeyStatistics || {};
+      const sd = r.summaryDetail || {};
+      const fd = r.financialData || {};
+      const mh = r.majorHoldersBreakdown || {};
+      const holders = (list) => (list || []).map((h) => ({ name: h.organization, pct: raw(h.pctHeld), shares: raw(h.position), value: raw(h.value), date: raw(h.reportDate) })).filter((h) => h.name);
+      return {
+        earnings: (r.earningsHistory?.history || []).map((h) => ({ quarter: raw(h.quarter), period: h.period, actual: raw(h.epsActual), estimate: raw(h.epsEstimate), surprise: raw(h.surprisePercent) })).filter((h) => h.quarter),
+        estimates: (r.earningsTrend?.trend || []).map((t) => ({
+          period: t.period, end: t.endDate, growth: raw(t.growth),
+          eps: { avg: raw(t.earningsEstimate?.avg), low: raw(t.earningsEstimate?.low), high: raw(t.earningsEstimate?.high), analysts: raw(t.earningsEstimate?.numberOfAnalysts), yearAgo: raw(t.earningsEstimate?.yearAgoEps) },
+          revenue: { avg: raw(t.revenueEstimate?.avg), low: raw(t.revenueEstimate?.low), high: raw(t.revenueEstimate?.high), analysts: raw(t.revenueEstimate?.numberOfAnalysts), yearAgo: raw(t.revenueEstimate?.yearAgoRevenue) },
+        })),
+        ownership: { insiders: raw(mh.insidersPercentHeld), institutions: raw(mh.institutionsPercentHeld), institutionsFloat: raw(mh.institutionsFloatPercentHeld), institutionCount: raw(mh.institutionsCount) },
+        institutions: holders(r.institutionOwnership?.ownershipList),
+        funds: holders(r.fundOwnership?.ownershipList),
+        insiders: (r.insiderTransactions?.transactions || []).slice(0, 40).map((t) => ({ name: t.filerName, relation: t.filerRelation, text: t.transactionText, date: raw(t.startDate), shares: raw(t.shares), value: raw(t.value) })),
+        stats: {
+          marketCap: raw(sd.marketCap), ev: raw(ks.enterpriseValue), trailingPE: raw(sd.trailingPE), forwardPE: raw(sd.forwardPE) ?? raw(ks.forwardPE), peg: raw(ks.pegRatio),
+          priceToSales: raw(sd.priceToSalesTrailing12Months), priceToBook: raw(ks.priceToBook), evRevenue: raw(ks.enterpriseToRevenue), evEbitda: raw(ks.enterpriseToEbitda),
+          grossMargin: raw(fd.grossMargins), operatingMargin: raw(fd.operatingMargins), profitMargin: raw(fd.profitMargins), roe: raw(fd.returnOnEquity), roa: raw(fd.returnOnAssets),
+          revenueGrowth: raw(fd.revenueGrowth), earningsGrowth: raw(fd.earningsGrowth), currentRatio: raw(fd.currentRatio), quickRatio: raw(fd.quickRatio), debtToEquity: raw(fd.debtToEquity),
+          totalCash: raw(fd.totalCash), totalDebt: raw(fd.totalDebt), fcf: raw(fd.freeCashflow), ocf: raw(fd.operatingCashflow),
+          beta: raw(sd.beta) ?? raw(ks.beta), high52: raw(sd.fiftyTwoWeekHigh), low52: raw(sd.fiftyTwoWeekLow), change52: raw(ks['52WeekChange']), ma50: raw(sd.fiftyDayAverage), ma200: raw(sd.twoHundredDayAverage),
+          avgVolume: raw(sd.averageVolume), avgVolume10d: raw(sd.averageVolume10days), shares: raw(ks.sharesOutstanding), float: raw(ks.floatShares),
+          sharesShort: raw(ks.sharesShort), shortRatio: raw(ks.shortRatio), shortFloat: raw(ks.shortPercentOfFloat), sharesShortPrior: raw(ks.sharesShortPriorMonth),
+          dividendRate: raw(sd.dividendRate), dividendYield: raw(sd.dividendYield), payoutRatio: raw(sd.payoutRatio), exDividend: raw(sd.exDividendDate), avgYield5y: raw(sd.fiveYearAvgDividendYield),
+          bookValue: raw(ks.bookValue), trailingEps: raw(ks.trailingEps), forwardEps: raw(ks.forwardEps), lastSplit: ks.lastSplitFactor || null, lastSplitDate: raw(ks.lastSplitDate),
+          fiscalYearEnd: raw(ks.lastFiscalYearEnd), mostRecentQuarter: raw(ks.mostRecentQuarter),
+        },
+      };
+    });
+  }
+
+  // Every dividend and split on record (the chart endpoint's corporate-action events).
+  async function events(symbol) {
+    return cached(`events:${symbol}`, 6 * 60 * 60e3, async () => {
+      const data = await json(`${Q1}/v8/finance/chart/${encodeURIComponent(symbol)}?range=max&interval=1mo&events=div%2Csplit`);
+      const res = data?.chart?.result?.[0];
+      if (!res) throw new YahooError(`No history for ${symbol}`, 404);
+      const ev = res.events || {};
+      const dividends = Object.values(ev.dividends || {}).map((d) => ({ date: d.date, amount: n(d.amount) })).filter((d) => d.amount != null).sort((a, b) => b.date - a.date);
+      const splits = Object.values(ev.splits || {}).map((x) => ({ date: x.date, ratio: x.splitRatio || `${x.numerator}:${x.denominator}`, factor: n(x.numerator) / (n(x.denominator) || 1) })).sort((a, b) => b.date - a.date);
+      return { dividends, splits, currency: res.meta?.currency || null, price: n(res.meta?.regularMarketPrice) };
+    });
+  }
+
   // ---- options -----------------------------------------------------------------------------
 
   async function options(symbol, date) {
@@ -230,7 +327,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { chart, quotes, news, search, profile, options, normalizeChart, normalizeQuote };
+  return { chart, quotes, news, search, profile, options, statements, details, events, normalizeChart, normalizeQuote };
 }
 
 export async function pool(items, size, fn) {

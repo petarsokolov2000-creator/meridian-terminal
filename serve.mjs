@@ -18,6 +18,7 @@ import { createYahoo, pool } from './server/yahoo.mjs';
 import { createFinnhub } from './server/finnhub.mjs';
 import { createFred } from './server/fred.mjs';
 import { createRates } from './server/rates.mjs';
+import { createSec } from './server/sec.mjs';
 import { liveSymbols } from './src/live-universe.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,7 @@ const fetchOpts = mock ? { fetchImpl: mock.mockFetch } : {};
 const finnhub = createFinnhub({ getKey: () => keys.finnhub, ...fetchOpts, ...(mock ? { WebSocketImpl: mock.MockWebSocket } : {}) });
 const fred = createFred({ getKey: () => keys.fred, ...fetchOpts });
 const rates = createRates(fetchOpts);
+const sec = createSec(fetchOpts);
 const providers = { finnhub: { check: () => finnhub.check(), restart: () => finnhub.restart() }, fred: { check: () => fred.check(), restart: () => fred.reset() } };
 
 // Trades stream to every open browser tab as server-sent events, batched every 250 ms.
@@ -273,6 +275,27 @@ const routes = {
   },
   '/api/finnhub/earnings': async () => finnhub.earnings(),
   '/api/finnhub/economic': async () => finnhub.economic(),
+  // Company financials: statements (annual/quarterly), earnings & ownership, dividends, filings.
+  '/api/statements': async (q) => {
+    const s = oneSym(q.get('symbol'));
+    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
+    return yahoo.statements(s, q.get('freq'));
+  },
+  '/api/details': async (q) => {
+    const s = oneSym(q.get('symbol'));
+    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
+    return yahoo.details(s);
+  },
+  '/api/events': async (q) => {
+    const s = oneSym(q.get('symbol'));
+    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
+    return yahoo.events(s);
+  },
+  '/api/filings': async (q) => {
+    const s = oneSym(q.get('symbol'));
+    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
+    return sec.filings(s);
+  },
   '/api/options': async (q) => {
     const s = oneSym(q.get('symbol'));
     if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });

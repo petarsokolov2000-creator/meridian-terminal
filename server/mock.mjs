@@ -52,9 +52,14 @@ function chart(s, range, interval) {
   const n = !daily ? 120 : { '2y': 504, '5y': 1260, max: 700 }[range] || 252;
   const d = series(s, n, daily ? 86400 : 60, now, daily ? 0.03 : 0.003);
   const last = d.c[d.c.length - 1];
+  const events = interval === '1mo' ? { events: {
+    dividends: Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((k) => { const t = now - k * 91 * 86400; return [t, { amount: 0.26 - k * 0.005, date: t }]; })),
+    splits: { 1598832000: { date: 1598832000, numerator: 4, denominator: 1, splitRatio: '4:1' } },
+  } } : {};
   return {
     chart: {
       result: [{
+        ...events,
         meta: {
           symbol: s, currency: 'USD', longName: `${s} Mock Corp`, instrumentType: 'EQUITY', exchangeTimezoneName: 'America/New_York',
           regularMarketPrice: last, chartPreviousClose: last * 0.99, regularMarketDayHigh: last * 1.01, regularMarketDayLow: last * 0.98,
@@ -107,16 +112,54 @@ function summary(s) {
       result: [{
         assetProfile: { longBusinessSummary: `${s} Mock Corp makes mock products for testing.`, sector: 'Technology', industry: 'Software', fullTimeEmployees: 12000, country: 'United States', website: 'https://example.com' },
         financialData: { targetMeanPrice: v(base(s) * 1.1), targetHighPrice: v(base(s) * 1.4), targetLowPrice: v(base(s) * 0.8), recommendationMean: v(2.1), recommendationKey: 'buy', numberOfAnalystOpinions: v(30), totalRevenue: v(3.9e11), revenueGrowth: v(0.06), grossMargins: v(0.46), operatingMargins: v(0.31), ebitdaMargins: v(0.34), profitMargins: v(0.25), ebitda: v(1.3e11), totalDebt: v(1.0e11), totalCash: v(6e10), freeCashflow: v(1.0e11), returnOnEquity: v(1.5), debtToEquity: v(150) },
-        defaultKeyStatistics: { priceToBook: v(50), enterpriseValue: v(3.5e12), enterpriseToEbitda: v(26), forwardPE: v(30) },
-        summaryDetail: { beta: v(1.2) },
         recommendationTrend: { trend: [{ period: '0m', strongBuy: 10, buy: 20, hold: 12, sell: 2, strongSell: 1 }] },
         upgradeDowngradeHistory: { history: [{ epochGradeDate: Math.floor(Date.now() / 1000) - 86400 * 3, firm: 'Mock Securities', toGrade: 'Buy', fromGrade: 'Hold', action: 'up', currentPriceTarget: base(s) * 1.2 }] },
         incomeStatementHistory: { incomeStatementHistory: [2025, 2024, 2023, 2022].map((y) => ({ endDate: v(Date.UTC(y, 8, 30) / 1000), totalRevenue: v(3.9e11 - (2025 - y) * 1e10), grossProfit: v(1.8e11), operatingIncome: v(1.2e11), netIncome: v(9.7e10), ebit: v(1.2e11) })) },
         calendarEvents: { earnings: { earningsDate: [v(Math.floor(Date.now() / 1000) + 86400 * 10)], earningsAverage: v(1.6), revenueAverage: v(9.4e10) } },
+        earningsHistory: { history: [['4q', 1.4, 1.35], ['3q', 1.53, 1.5], ['2q', 1.4, 1.43], ['1q', 1.65, 1.6]].map(([p, a, e], i) => ({ period: `-${p}`, quarter: v(Math.floor(Date.UTC(2025, 9 + i * 3, 1) / 1000)), epsActual: v(a), epsEstimate: v(e), surprisePercent: v((a - e) / e) })) },
+        earningsTrend: { trend: [['0q', 1.7], ['+1q', 1.85], ['0y', 7.1], ['+1y', 7.9]].map(([p, e]) => ({ period: p, endDate: '2026-12-31', growth: v(0.08), earningsEstimate: { avg: v(e), low: v(e * 0.9), high: v(e * 1.1), numberOfAnalysts: v(28), yearAgoEps: v(e * 0.92) }, revenueEstimate: { avg: v(e * 5.6e10), low: v(e * 5.2e10), high: v(e * 6e10), numberOfAnalysts: v(25), yearAgoRevenue: v(e * 5.1e10) } })) },
+        majorHoldersBreakdown: { insidersPercentHeld: v(0.021), institutionsPercentHeld: v(0.612), institutionsFloatPercentHeld: v(0.625), institutionsCount: v(6800) },
+        institutionOwnership: { ownershipList: [['Vanguard Group Inc', 0.092], ['Blackrock Inc.', 0.071], ['State Street Corp', 0.038]].map(([o, p]) => ({ organization: o, pctHeld: v(p), position: v(p * 1.5e10), value: v(p * 3.4e12), reportDate: v(Math.floor(Date.UTC(2026, 5, 30) / 1000)) })) },
+        fundOwnership: { ownershipList: [{ organization: 'Vanguard Total Stock Market Index Fund', pctHeld: v(0.03), position: v(4.5e8), value: v(1e11), reportDate: v(Math.floor(Date.UTC(2026, 5, 30) / 1000)) }] },
+        insiderTransactions: { transactions: [{ filerName: 'COOK TIMOTHY D', filerRelation: 'Chief Executive Officer', transactionText: 'Sale at price 228.00 per share.', startDate: v(Math.floor(Date.UTC(2026, 9, 2) / 1000)), shares: v(108136), value: v(24655008) }] },
+        defaultKeyStatistics: { priceToBook: v(50), enterpriseValue: v(3.5e12), enterpriseToEbitda: v(26), enterpriseToRevenue: v(9), forwardPE: v(30), pegRatio: v(2.1), sharesOutstanding: v(1.5e10), floatShares: v(1.49e10), sharesShort: v(1.2e8), shortRatio: v(2.1), shortPercentOfFloat: v(0.008), sharesShortPriorMonth: v(1.1e8), bookValue: v(4.6), trailingEps: v(6.1), forwardEps: v(7.1), '52WeekChange': v(0.18), lastSplitFactor: '4:1', lastSplitDate: v(1598832000), lastFiscalYearEnd: v(1790985600), mostRecentQuarter: v(1790985600) },
+        summaryDetail: { beta: v(1.2), marketCap: v(3.4e12), trailingPE: v(37), forwardPE: v(30), priceToSalesTrailing12Months: v(8.7), fiftyTwoWeekHigh: v(260), fiftyTwoWeekLow: v(169), fiftyDayAverage: v(225), twoHundredDayAverage: v(215), averageVolume: v(5.2e7), averageVolume10days: v(4.8e7), dividendRate: v(1.04), dividendYield: v(0.0046), payoutRatio: v(0.16), exDividendDate: v(1793318400), fiveYearAvgDividendYield: v(0.56) },
       }],
       error: null,
     },
   };
+}
+
+function timeseries(u) {
+  const types = (u.searchParams.get('type') || '').split(',').filter(Boolean);
+  const quarterly = types[0]?.startsWith('quarterly');
+  const dates = quarterly
+    ? ['2024-09-30', '2024-12-31', '2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31', '2026-03-31', '2026-06-30', '2026-09-30']
+    : ['2021-09-30', '2022-09-30', '2023-09-30', '2024-09-30', '2025-09-30', '2026-09-30'];
+  const base = { TotalRevenue: 3.9e11, CostOfRevenue: 2.1e11, GrossProfit: 1.8e11, OperatingIncome: 1.2e11, NetIncome: 9.7e10, DilutedEPS: 6.1, TotalAssets: 3.5e11, StockholdersEquity: 7e10, OperatingCashFlow: 1.1e11, CapitalExpenditure: -1.1e10, FreeCashFlow: 9.9e10 };
+  const result = types.map((t) => {
+    const name = t.replace(/^(annual|quarterly)/, '');
+    // a type Yahoo has no data for comes back as just a meta block
+    if (!(name in base)) return { meta: { symbol: [u.pathname.split('/').pop()], type: [t] }, timestamp: [] };
+    const scale = quarterly && name !== 'DilutedEPS' ? 0.25 : 1;
+    return {
+      meta: { symbol: [u.pathname.split('/').pop()], type: [t] },
+      timestamp: dates.map((d) => Date.parse(d) / 1000),
+      [t]: dates.map((d, i) => (i === 1 ? null : { asOfDate: d, periodType: quarterly ? '3M' : '12M', currencyCode: 'USD', reportedValue: { raw: base[name] * scale * (0.8 + i * 0.05), fmt: 'x' } })),
+    };
+  });
+  return { timeseries: { result, error: null } };
+}
+
+function sec(u) {
+  if (u.pathname === '/files/company_tickers.json') return ok({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' }, 1: { cik_str: 1067983, ticker: 'BRK-B', title: 'BERKSHIRE HATHAWAY INC' } });
+  if (u.pathname === '/submissions/CIK0000320193.json') {
+    return ok({ name: 'Apple Inc.', filings: { recent: {
+      accessionNumber: ['0000320193-26-000105', '0000320193-26-000090', '0001140361-26-038000'], filingDate: ['2026-10-30', '2026-08-01', '2026-07-15'],
+      reportDate: ['2026-09-27', '2026-06-28', ''], form: ['10-K', '10-Q', '4'], primaryDocument: ['aapl-20260927.htm', 'aapl-20260628.htm', 'xslF345X05/form4.xml'], primaryDocDescription: ['10-K', '10-Q', 'FORM 4'],
+    } } });
+  }
+  return new Response('{}', { status: 404 });
 }
 
 function news(q, wantQuotes) {
@@ -250,6 +293,8 @@ export async function mockFetch(url) {
   if (u.hostname === 'data-api.ecb.europa.eu') return new Response(ecbCsv(), { status: 200 });
   if (u.hostname === 'api.frankfurter.dev') return ok({ amount: 1, base: 'USD', date: '2026-10-30', rates: { EUR: 0.925, JPY: 151.3, KRW: 1360.5, CNY: 7.21, GBP: 0.78 } });
   if (u.hostname === 'api.stlouisfed.org') return fred(u);
+  if (u.hostname === 'www.sec.gov' || u.hostname === 'data.sec.gov') return sec(u);
+  if (u.pathname.startsWith('/ws/fundamentals-timeseries/')) return ok(timeseries(u));
   if (u.hostname === 'fc.yahoo.com') return new Response('', { status: 404, headers: { 'set-cookie': 'A3=mock; Path=/' } });
   if (u.pathname === '/v1/test/getcrumb') return new Response('mockcrumb', { status: 200 });
   let m;

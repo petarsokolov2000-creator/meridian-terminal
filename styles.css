@@ -291,3 +291,10 @@ a.sec:hover { text-decoration: underline; }
   .status { margin-left: auto; }
   .footbar { font-size: 10px; }
 }
+
+/* company financials */
+.tbl.fin tr.strong td { font-weight: 700; }
+.tbl.fin tr.ratio td { font-style: italic; }
+.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 14px; padding: 0 6px; }
+a.doc { color: var(--link-b); text-decoration: none; }
+a.doc:hover { text-decoration: underline; }

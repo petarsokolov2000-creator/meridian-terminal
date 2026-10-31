@@ -1,5 +1,6 @@
 // Meridian Terminal server: serves the app and fetches real market data for it
-// (browsers can't read Yahoo Finance directly). No dependencies.
+// (browsers can't read Yahoo Finance directly). No dependencies. The data routes themselves
+// live in server/backend.mjs, shared with the Android app.
 //
 //   node serve.mjs            http://localhost:8173 on this PC
 //   node serve.mjs --open     ...and open the browser
@@ -14,11 +15,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { exec } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createYahoo, pool } from './server/yahoo.mjs';
-import { createFinnhub } from './server/finnhub.mjs';
-import { createFred } from './server/fred.mjs';
-import { createRates } from './server/rates.mjs';
-import { createSec } from './server/sec.mjs';
+import { createBackend } from './server/backend.mjs';
 import { liveSymbols } from './src/live-universe.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -29,17 +26,13 @@ const CACHE_DIR = path.join(ROOT, '.cache', process.env.MERIDIAN_MOCK ? 'mock' :
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
 const mock = process.env.MERIDIAN_MOCK ? await import('./server/mock.mjs') : null;
-const yahoo = mock ? createYahoo({ fetchImpl: mock.mockFetch }) : createYahoo();
 
 // ---- API keys: an env var, or a git-ignored file next to this script ------------------------
 // Keys never leave this PC: the browser only learns whether one is set.
 
-const KEYS = {
-  finnhub: { env: 'FINNHUB_API_KEY', file: '.finnhub-key', label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
-  fred: { env: 'FRED_API_KEY', file: '.fred-key', label: 'FRED', pattern: /^[a-z0-9]{32}$/ },
-};
+const KEY_FILES = { finnhub: { env: 'FINNHUB_API_KEY', file: '.finnhub-key' }, fred: { env: 'FRED_API_KEY', file: '.fred-key' } };
 const keys = {};
-for (const [id, k] of Object.entries(KEYS)) {
+for (const [id, k] of Object.entries(KEY_FILES)) {
   keys[id] = process.env[k.env] || null;
   if (!keys[id]) {
     try {
@@ -49,24 +42,49 @@ for (const [id, k] of Object.entries(KEYS)) {
     }
   }
 }
-const fetchOpts = mock ? { fetchImpl: mock.mockFetch } : {};
-const finnhub = createFinnhub({ getKey: () => keys.finnhub, ...fetchOpts, ...(mock ? { WebSocketImpl: mock.MockWebSocket } : {}) });
-const fred = createFred({ getKey: () => keys.fred, ...fetchOpts });
-const rates = createRates(fetchOpts);
-const sec = createSec(fetchOpts);
-const providers = { finnhub: { check: () => finnhub.check(), restart: () => finnhub.restart() }, fred: { check: () => fred.check(), restart: () => fred.reset() } };
+const keyStore = {
+  get: (id) => keys[id],
+  // A key being checked is held in memory only; it is written once the provider accepts it.
+  set(id, value, { tentative = false } = {}) {
+    keys[id] = value || null;
+    if (tentative || process.env[KEY_FILES[id].env]) return;
+    const file = path.join(ROOT, KEY_FILES[id].file);
+    if (value) writeFileSync(file, value);
+    else {
+      try {
+        unlinkSync(file);
+      } catch {
+        // nothing saved
+      }
+    }
+  },
+};
+
+const backend = createBackend({
+  ...(mock ? { fetchImpl: mock.mockFetch, WebSocketImpl: mock.MockWebSocket } : {}),
+  keyStore,
+  historyStore: {
+    read: async (day) => JSON.parse(await readFile(path.join(CACHE_DIR, `history-${day}.json`), 'utf8')),
+    write: async (day, data) => {
+      await mkdir(CACHE_DIR, { recursive: true });
+      await writeFile(path.join(CACHE_DIR, `history-${day}.json`), JSON.stringify(data));
+    },
+  },
+  currentVersion: async () => (await readFile(path.join(ROOT, 'VERSION'), 'utf8')).trim(),
+  universe: liveSymbols(),
+  mock: !!mock,
+});
 
 // Trades stream to every open browser tab as server-sent events, batched every 250 ms.
 const streams = new Set();
 let pending = [];
-finnhub.onTrades((trades) => pending.push(...trades));
+backend.onTrades((trades) => pending.push(...trades));
 setInterval(() => {
   if (!pending.length) return;
   const data = `data: ${JSON.stringify(pending)}\n\n`;
   pending = [];
   for (const res of streams) res.write(data);
 }, 250);
-const UNIVERSE = new Set(liveSymbols());
 
 // ---- access key for other devices (only with --lan) ---------------------------------------
 
@@ -96,78 +114,7 @@ function authorized(req, url) {
   return keyOk(url.searchParams.get('key')) || keyOk(cookie);
 }
 
-// ---- daily history: cached on disk per day, since it only changes once a day --------------
-
-const today = () => new Date().toISOString().slice(0, 10);
-let historyMem = null;
-const historyFailed = new Map(); // symbol -> day it failed, so a bad symbol isn't retried all day
-
-async function fetchHistory(symbols, data) {
-  const errors = {};
-  await pool(symbols, 6, async (s) => {
-    try {
-      const ch = await yahoo.chart(s, '1y', '1d');
-      data[s] = { meta: ch.meta, bars: ch.bars.map(({ t, o, h, l, c, v }) => ({ t, o, h, l, c, v })) };
-    } catch (err) {
-      errors[s] = err.message;
-      historyFailed.set(s, today());
-    }
-  });
-  if (Object.keys(errors).length) console.warn(`History missing for ${Object.keys(errors).length} symbols:`, Object.entries(errors).slice(0, 5));
-}
-
-async function allHistory() {
-  const file = path.join(CACHE_DIR, `history-${today()}.json`);
-  let data = historyMem?.day === today() ? historyMem.data : null;
-  if (!data) {
-    try {
-      data = JSON.parse(await readFile(file, 'utf8'));
-    } catch {
-      data = {};
-    }
-  }
-  // Fetch whatever today's cache lacks (all of it on the first start of the day, or symbols
-  // a newer version added), skipping ones that already failed today.
-  const missing = [...UNIVERSE].filter((s) => !data[s] && historyFailed.get(s) !== today());
-  if (missing.length) {
-    await fetchHistory(missing, data);
-    if (Object.keys(data).length > UNIVERSE.size * 0.8) {
-      await mkdir(CACHE_DIR, { recursive: true });
-      await writeFile(file, JSON.stringify(data));
-    }
-  }
-  historyMem = { day: today(), data };
-  return data;
-}
-
-// ---- version: compare with the newest one published on GitHub ------------------------------
-
-const REPO = 'petarsokolov2000-creator/meridian-terminal';
-let latestCache = null;
-async function versionInfo() {
-  let current = null;
-  try {
-    current = (await readFile(path.join(ROOT, 'VERSION'), 'utf8')).trim();
-  } catch {
-    // running from a copy without a VERSION file
-  }
-  if (!latestCache || Date.now() - latestCache.at > 60 * 60e3) {
-    let latest = null;
-    if (!mock) {
-      try {
-        const res = await fetch(`https://raw.githubusercontent.com/${REPO}/main/VERSION?t=${Date.now()}`, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) latest = (await res.text()).trim().slice(0, 40) || null;
-      } catch {
-        // offline: no update check
-      }
-    }
-    latestCache = { at: Date.now(), latest };
-  }
-  const latest = latestCache.latest;
-  return { current, latest, updateAvailable: !!(current && latest && latest !== current) };
-}
-
-// ---- routes -----------------------------------------------------------------------------
+// ---- HTTP -------------------------------------------------------------------------------
 
 // POST bodies must be JSON: other websites can't send that cross-origin without a CORS
 // preflight, which this server never approves, so they can't drive these routes.
@@ -198,111 +145,7 @@ function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
 }
-const oneSym = (v) => (/^[\w^=.\-/:]{1,24}$/.test(v || '') ? v : null);
-// Any well-formed Yahoo symbol: the built-in list plus whatever tickers the user added.
-const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) => oneSym(s)).slice(0, 320);
-
-const routes = {
-  '/api/status': async () => ({ ok: true, live: true, mock: !!process.env.MERIDIAN_MOCK }),
-  '/api/history': async () => allHistory(),
-  '/api/search': async (q) => {
-    const term = String(q.get('q') || '').trim().slice(0, 40);
-    return term.length < 1 ? [] : yahoo.search(term);
-  },
-  // One instrument outside the built-in list: a year of daily bars plus its metadata.
-  '/api/instrument': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    const ch = await yahoo.chart(s, '1y', '1d');
-    if (!ch.bars.length) throw Object.assign(new Error(`Yahoo has no price history for ${s}`), { status: 404 });
-    return { meta: ch.meta, bars: ch.bars.map(({ t, o, h, l, c, v }) => ({ t, o, h, l, c, v })) };
-  },
-  '/api/quotes': async (q) => {
-    const want = syms(q.get('symbols'));
-    const r = await yahoo.quotes(want);
-    // FX pairs Yahoo didn't price: fall back to the ECB reference rate (published once a day).
-    const missingFx = want.filter((s) => s.endsWith('=X') && !r.quotes[s]);
-    if (missingFx.length) {
-      try {
-        const fx = await rates.fx();
-        for (const s of missingFx) {
-          // EURUSD=X style quotes USD per unit of the first currency; JPY=X style quotes units per USD
-          const base = /^[A-Z]{6}=X$/.test(s);
-          const ccy = s.slice(0, 3).replace('CNH', 'CNY');
-          const perUsd = fx.rates[ccy];
-          if (!perUsd) continue;
-          r.quotes[s] = { symbol: s, price: base ? 1 / perUsd : perUsd, prevClose: null, source: 'ecb', asOf: fx.date };
-        }
-      } catch {
-        // no backup available either
-      }
-    }
-    return r;
-  },
-  '/api/intraday': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    const ch = await yahoo.chart(s, '1d', q.get('interval') === '5m' ? '5m' : '1m');
-    return { meta: ch.meta, bars: ch.bars };
-  },
-  '/api/chart': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    const range = ['5y', '10y', 'max', '2y', '1y'].includes(q.get('range')) ? q.get('range') : '2y';
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    const ch = await yahoo.chart(s, range, range === 'max' || range === '10y' ? '1wk' : '1d');
-    return { meta: ch.meta, bars: ch.bars };
-  },
-  '/api/news': async (q) => yahoo.news(String(q.get('q') || 'stock market').slice(0, 60), Math.min(30, Number(q.get('n')) || 20)),
-  '/api/profile': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return yahoo.profile(s);
-  },
-  '/api/finnhub/status': async () => finnhub.status(),
-  '/api/rates': async () => {
-    // Each source on its own: one failing leaves the other.
-    const [t, e] = await Promise.allSettled([rates.treasury(), rates.ecb()]);
-    return { treasury: t.value ?? null, treasuryError: t.reason?.message ?? null, ecb: e.value ?? null, ecbError: e.reason?.message ?? null };
-  },
-  '/api/fred/status': async () => ({ configured: !!keys.fred }),
-  '/api/version': async () => versionInfo(),
-  '/api/fred/economy': async () => fred.economy(),
-  '/api/finnhub/news': async (q) => finnhub.news(['general', 'forex', 'crypto', 'merger'].includes(q.get('category')) ? q.get('category') : 'general'),
-  '/api/finnhub/company-news': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return finnhub.companyNews(s);
-  },
-  '/api/finnhub/earnings': async () => finnhub.earnings(),
-  '/api/finnhub/economic': async () => finnhub.economic(),
-  // Company financials: statements (annual/quarterly), earnings & ownership, dividends, filings.
-  '/api/statements': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return yahoo.statements(s, q.get('freq'));
-  },
-  '/api/details': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return yahoo.details(s);
-  },
-  '/api/events': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return yahoo.events(s);
-  },
-  '/api/filings': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    return sec.filings(s);
-  },
-  '/api/options': async (q) => {
-    const s = oneSym(q.get('symbol'));
-    if (!s) throw Object.assign(new Error('Bad symbol'), { status: 400 });
-    const d = Number(q.get('date')) || null;
-    return yahoo.options(s, d);
-  },
-};
+const failure = (err) => (err.status && err.status < 500 ? err.status : 502);
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -322,16 +165,6 @@ http.createServer(async (req, res) => {
     req.on('close', () => streams.delete(res));
     return;
   }
-  if (req.method === 'POST' && url.pathname === '/api/finnhub/stream') {
-    try {
-      const body = await readBody(req);
-      finnhub.setStream((Array.isArray(body.symbols) ? body.symbols : []).filter((s) => typeof s === 'string' && oneSym(s)));
-      send(res, 200, finnhub.status());
-    } catch (err) {
-      send(res, 400, { error: err.message });
-    }
-    return;
-  }
   if (req.method === 'POST' && url.pathname === '/api/shutdown') {
     // The launcher stops a leftover server before updating. Only from this PC, JSON only.
     if (!isLocal(req) || !/^application\/json\b/i.test(req.headers['content-type'] || '')) return send(res, 403, { error: 'Not allowed' });
@@ -339,53 +172,29 @@ http.createServer(async (req, res) => {
     setTimeout(() => process.exit(0), 100);
     return;
   }
-  const keyRoute = /^\/api\/(finnhub|fred)\/key$/.exec(url.pathname);
-  if (req.method === 'POST' && keyRoute) {
-    const id = keyRoute[1];
-    const k = KEYS[id];
-    // Only from this PC: a phone on the Wi-Fi can't change or remove a key.
-    if (!isLocal(req)) return send(res, 403, { error: `Set the ${k.label} key from the PC running Meridian.` });
+  if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
+    // Only this PC may change or remove a key; a phone on the Wi-Fi can't.
+    if (/\/key$/.test(url.pathname) && !isLocal(req)) return send(res, 403, { error: 'Set API keys from the PC running Meridian.' });
     try {
-      const value = String((await readBody(req)).key || '').trim();
-      if (!value) {
-        keys[id] = null;
-        try {
-          unlinkSync(path.join(ROOT, k.file));
-        } catch {
-          // nothing saved
-        }
-        providers[id].restart();
-        return send(res, 200, { ok: true, removed: true });
-      }
-      if (!k.pattern.test(value)) return send(res, 400, { error: `That doesn't look like a ${k.label} API key${id === 'fred' ? ' (32 lower-case letters and digits)' : ' (letters and digits only)'}.` });
-      const previous = keys[id];
-      keys[id] = value;
-      try {
-        await providers[id].check();
-      } catch (err) {
-        keys[id] = previous;
-        return send(res, 400, { error: `${k.label} didn't accept it: ${err.message}` });
-      }
-      if (!process.env[k.env]) writeFileSync(path.join(ROOT, k.file), value);
-      providers[id].restart();
-      send(res, 200, { ok: true });
+      send(res, 200, await backend.post(url.pathname, await readBody(req)));
     } catch (err) {
-      send(res, 400, { error: err.message });
+      send(res, failure(err) === 502 ? 400 : failure(err), { error: err.message });
     }
     return;
   }
-  const route = routes[url.pathname];
-  if (route) {
+  if (url.pathname.startsWith('/api/')) {
     try {
-      send(res, 200, await route(url.searchParams));
+      send(res, 200, await backend.get(url.pathname, url.searchParams));
     } catch (err) {
-      send(res, err.status && err.status < 500 ? err.status : 502, { error: err.message });
+      send(res, failure(err), { error: err.message });
     }
     return;
   }
   const rel = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
   const file = path.normalize(path.join(ROOT, rel));
-  if (!file.startsWith(ROOT + path.sep) || /[\\/](server|\.cache)[\\/]|\.(access-key|finnhub-key|fred-key)$/.test(file.slice(ROOT.length))) {
+  // server/ is served too: it holds no secrets (keys live in the dot-files blocked here), and the
+  // Android app loads the same modules from its own copy.
+  if (!file.startsWith(ROOT + path.sep) || /[\\/]\.cache[\\/]|\.(access-key|finnhub-key|fred-key)$/.test(file.slice(ROOT.length))) {
     res.writeHead(404).end('Not found');
     return;
   }

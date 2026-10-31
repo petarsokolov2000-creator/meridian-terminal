@@ -1,0 +1,42 @@
+# Builds the Meridian Android app and publishes it at
+#   https://github.com/petarsokolov2000-creator/meridian-terminal/releases/download/android/Meridian.apk
+# The app updates its web files from this repository by itself, so a new APK is only needed
+# when the Android code (android/) changes.
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build Meridian.apk
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          MERIDIAN_KEYSTORE_B64: ${{ secrets.MERIDIAN_KEYSTORE_B64 }}
+          MERIDIAN_KEYSTORE_PASSWORD: ${{ secrets.MERIDIAN_KEYSTORE_PASSWORD }}
+        run: bash android/build.sh
+      - name: Publish to the "android" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view android >/dev/null 2>&1; then
+            gh release create android --title "Meridian for Android" \
+              --notes "Open this page on your Android phone and tap Meridian.apk to install. After that the app updates itself."
+          fi
+          gh release upload android android/Meridian.apk --clobber

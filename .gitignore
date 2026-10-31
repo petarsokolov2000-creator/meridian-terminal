@@ -5,3 +5,5 @@
 Meridian.exe
 Meridian.exe.old
 Meridian.ico
+*.keystore
+*.jks

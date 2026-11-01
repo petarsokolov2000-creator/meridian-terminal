@@ -99,73 +99,210 @@ register({
 });
 
 // ---- screener ----------------------------------------------------------------------------
+// Point-and-click: pick a ready-made screen or set a minimum/maximum for any column, choose a
+// sector or region, and tap a column header to sort. The typed form still works:
+// SCRN pe<20 yld>2 sector=fin region=us sort=-chg
 
+const hi52 = (i) => Math.max(...i.history.map((b) => b.h ?? b.c), i.high ?? i.last);
+const rsiCache = new Map();
+function rsiOf(i) {
+  const key = `${i.sym}:${i.history.length}:${i.history[i.history.length - 1]?.t}`;
+  let base = rsiCache.get(key);
+  if (!base) {
+    // Wilder's averages up to yesterday, so today's price only adds one step
+    const c = i.history.map((b) => b.c);
+    let g = 0;
+    let l = 0;
+    for (let k = 1; k < c.length; k++) {
+      const d = c[k] - c[k - 1];
+      if (k <= 14) {
+        g += Math.max(d, 0) / 14;
+        l += Math.max(-d, 0) / 14;
+      } else {
+        g = (g * 13 + Math.max(d, 0)) / 14;
+        l = (l * 13 + Math.max(-d, 0)) / 14;
+      }
+    }
+    base = { g, l, last: c[c.length - 1] };
+    rsiCache.set(key, base);
+  }
+  const d = i.last - base.last;
+  const g = (base.g * 13 + Math.max(d, 0)) / 14;
+  const l = (base.l * 13 + Math.max(-d, 0)) / 14;
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+const finite = (v) => (Number.isFinite(v) ? v : null);
+
+// [label, value(inst), decimals, help]
 const FIELDS = {
-  pe: ['P/E', (i) => i.last / i.eps],
-  cap: ['Mkt cap (B)', (i) => (i.shares * i.last) / 1e9],
-  chg: ['Chg %', (i) => i.pct * 100],
-  yld: ['Div yld %', (i) => i.divYield],
-  beta: ['Beta', (i) => i.histBeta],
-  vol: ['Vol %', (i) => i.realVol * 100],
-  ret: ['1Y %', (i) => (i.last / i.history[0].c - 1) * 100],
-  margin: ['Margin %', (i) => i.margin * 100],
-  px: ['Price', (i) => i.last],
+  px: ['Price', (i) => i.last, 2, 'Last price'],
+  chg: ['Today %', (i) => i.pct * 100, 2, 'Change today'],
+  ret: ['1Y %', (i) => (i.last / i.history[0].c - 1) * 100, 1, 'Price change over the past year'],
+  off: ['Off high %', (i) => (i.last / hi52(i) - 1) * 100, 1, 'Distance below the 52-week high (0 = at the high)'],
+  rsi: ['RSI', rsiOf, 0, '14-day RSI: under 30 oversold, over 70 overbought'],
+  pe: ['P/E', (i) => (i.eps > 0 ? i.last / i.eps : null), 1, 'Price / earnings (left out when earnings are negative)'],
+  cap: ['Mkt cap B', (i) => (i.shares * i.last) / 1e9, 1, 'Market value in billions'],
+  yld: ['Div yld %', (i) => i.divYield, 2, 'Dividend yield'],
+  beta: ['Beta', (i) => i.histBeta, 2, 'Moves with the market: 1 = same, under 1 = calmer'],
+  vol: ['Vol %', (i) => i.realVol * 100, 0, 'Volatility: how much it swings in a year'],
 };
+const val = (i, f) => finite(FIELDS[f][1](i));
+
+const PRESETS = {
+  all: ['All stocks', {}],
+  value: ['Cheap (low P/E)', { max: { pe: 15 }, min: { cap: 5 }, sort: { field: 'pe', desc: false } }],
+  dividend: ['High dividends', { min: { yld: 3 }, sort: { field: 'yld', desc: true } }],
+  momentum: ['Strong trend', { min: { ret: 25, off: -8 }, sort: { field: 'ret', desc: true } }],
+  oversold: ['Oversold (RSI)', { max: { rsi: 35 }, sort: { field: 'rsi', desc: false } }],
+  winners: ['Today\'s winners', { sort: { field: 'chg', desc: true } }],
+  losers: ['Today\'s losers', { sort: { field: 'chg', desc: false } }],
+  calm: ['Low risk', { max: { vol: 25, beta: 0.9 }, sort: { field: 'vol', desc: false } }],
+  giants: ['Giants (>$200B)', { min: { cap: 200 }, sort: { field: 'cap', desc: true } }],
+};
+const blank = () => ({ preset: 'all', sector: '', region: '', min: {}, max: {}, sort: { field: 'cap', desc: true } });
 
 export function parseScreen(args) {
-  const filters = [];
-  let sort = null;
+  const q = { ...blank(), preset: null };
+  let any = false;
   for (const raw of args) {
     const a = raw.toLowerCase();
     let m = a.match(/^(sector|region)=(.+)$/);
     if (m) {
-      filters.push({ field: m[1], op: '=', v: m[2] });
+      q[m[1]] = m[2].replace(/_/g, ' ');
+      any = true;
       continue;
     }
     m = a.match(/^sort=(-?)(\w+)$/);
     if (m && FIELDS[m[2]]) {
-      sort = { field: m[2], desc: m[1] === '-' };
+      q.sort = { field: m[2], desc: m[1] === '-' };
+      any = true;
       continue;
     }
-    m = a.match(/^(\w+)(<=|>=|<|>|=)(-?[\d.]+)$/);
-    if (m && FIELDS[m[1]]) filters.push({ field: m[1], op: m[2], v: Number(m[3]) });
+    m = a.match(/^(\w+)(<=|>=|<|>)(-?[\d.]+)$/);
+    if (m && FIELDS[m[1]]) {
+      q[m[2][0] === '<' ? 'max' : 'min'][m[1]] = Number(m[3]);
+      any = true;
+    }
+    if (PRESETS[a]) return { ...blank(), ...PRESETS[a][1], min: { ...PRESETS[a][1].min }, max: { ...PRESETS[a][1].max }, preset: a };
   }
-  return { filters, sort };
+  return any ? q : null;
 }
 
-function applyScreen(list, { filters }) {
-  return list.filter((i) => filters.every((f) => {
-    if (f.field === 'sector') return i.sector.toLowerCase().startsWith(f.v.replace(/_/g, ' '));
-    if (f.field === 'region') return i.region.toLowerCase() === f.v;
-    const x = FIELDS[f.field][1](i);
-    return f.op === '<' ? x < f.v : f.op === '>' ? x > f.v : f.op === '<=' ? x <= f.v : f.op === '>=' ? x >= f.v : Math.abs(x - f.v) < 1e-9;
-  }));
+export function applyScreen(list, q) {
+  return list.filter((i) => {
+    if (q.sector && !i.sector.toLowerCase().startsWith(q.sector.toLowerCase())) return false;
+    if (q.region && i.region.toLowerCase() !== q.region.toLowerCase()) return false;
+    for (const [f, lo] of Object.entries(q.min)) if (lo != null && !(val(i, f) >= lo)) return false;
+    for (const [f, hi] of Object.entries(q.max)) if (hi != null && !(val(i, f) <= hi)) return false;
+    return true;
+  });
 }
 
 register({
-  code: 'SCRN', aliases: ['EQS', 'SCREEN'], name: 'Equity screener', cat: 'Equity',
-  help: 'SCRN pe<20 yld>2 sector=fin region=us sort=-chg (- = descending) — fields: pe cap chg yld beta vol ret margin px',
+  code: 'SCRN', aliases: ['EQS', 'SCREEN', 'SCREENER'], name: 'Stock screener', cat: 'Equity',
+  help: 'SCRN — pick a screen or set min/max filters; tap a column to sort. Typed: SCRN pe<20 yld>2 sector=fin sort=-chg',
   run(ctx) {
     const E = ctx.engine;
-    const q = parseScreen(ctx.args);
-    const sortF = q.sort || { field: 'cap', desc: true };
-    const desc = q.filters.map((f) => `${f.field}${f.op}${f.v}`).join(' · ') || 'no filters';
-    ctx.el.appendChild(el('div', 'qstrip', `<span class="dim">Criteria</span> <b>${esc(desc)}</b> <span class="dim">· sorted by ${sortF.field}${sortF.desc ? ' ↓' : ' ↑'}</span> <span class="count"></span>`));
-    const count = ctx.el.querySelector('.count');
-    const keys = ['pe', 'cap', 'chg', 'yld', 'beta', 'vol', 'ret'];
+    const q = parseScreen(ctx.args) || { ...blank(), ...store('scrn', {}) };
+    q.min ||= {};
+    q.max ||= {};
+    const persist = () => save('scrn', q);
+    const sectors = [...new Set(E.equities.map((i) => i.sector))].sort();
+    const regions = [...new Set(E.equities.map((i) => i.region))].sort();
+
+    const bar = el('div', 'toolbar');
+    const form = el('div', 'scrn-form');
+    const info = el('div', 'qstrip scrn-info');
+    ctx.el.append(bar, form, info);
+    // The filter boxes fold away (on phones by default) behind a button that counts the active ones.
+    let open = store('scrn-open', window.innerWidth > 900);
+    const active = () => Object.values(q.min).filter((v) => v != null).length + Object.values(q.max).filter((v) => v != null).length + (q.sector ? 1 : 0) + (q.region ? 1 : 0);
+    const drawBar = () => {
+      bar.innerHTML = Object.entries(PRESETS).map(([k, [label]]) => `<button class="tb ${q.preset === k ? 'on' : ''}" data-preset="${k}">${esc(label)}</button>`).join('') +
+        `<span class="sep"></span><button class="tb ${open ? 'on' : ''}" data-toggle>Filters${active() ? ` (${active()})` : ''} ${open ? '▴' : '▾'}</button>`;
+      form.hidden = !open;
+    };
+    const drawForm = () => {
+      const opt = (list, cur) => list.map((x) => `<option value="${esc(x)}" ${x.toLowerCase() === String(cur).toLowerCase() ? 'selected' : ''}>${esc(x)}</option>`).join('');
+      form.innerHTML = `<label class="wide">Sector <select data-sel="sector"><option value="">Any</option>${opt(sectors, q.sector)}</select></label>
+        <label class="wide">Region <select data-sel="region"><option value="">Any</option>${opt(regions, q.region)}</select></label>` +
+        Object.entries(FIELDS).filter(([k]) => k !== 'px').map(([k, [label, , , help]]) => `<label title="${esc(help)}">${esc(label)}
+          <span><input type="number" inputmode="decimal" step="any" placeholder="min" data-min="${k}" value="${q.min[k] ?? ''}"><input type="number" inputmode="decimal" step="any" placeholder="max" data-max="${k}" value="${q.max[k] ?? ''}"></span></label>`).join('');
+    };
+    bar.addEventListener('click', (e) => {
+      if (e.target.closest('[data-toggle]')) {
+        open = !open;
+        save('scrn-open', open);
+        drawBar();
+        return;
+      }
+      const b = e.target.closest('[data-preset]');
+      if (!b) return;
+      const p = PRESETS[b.dataset.preset][1];
+      Object.assign(q, blank(), { preset: b.dataset.preset, min: { ...p.min }, max: { ...p.max }, sort: { ...(p.sort || blank().sort) } });
+      persist();
+      drawBar();
+      drawForm();
+      update();
+    });
+    form.addEventListener('change', (e) => {
+      const t = e.target;
+      const n = t.value === '' ? null : Number(t.value);
+      if (t.dataset.sel) q[t.dataset.sel] = t.value;
+      if (t.dataset.min) q.min[t.dataset.min] = Number.isFinite(n) ? n : null;
+      if (t.dataset.max) q.max[t.dataset.max] = Number.isFinite(n) ? n : null;
+      q.preset = null;
+      persist();
+      drawBar();
+      update();
+    });
+
+    const keys = ['chg', 'ret', 'off', 'rsi', 'pe', 'cap', 'yld', 'beta', 'vol'];
     const t = new LiveTable(ctx.el, [
       { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
       { label: 'Name', value: (i) => esc(i.name), cls: 'l dim name' },
-      { label: 'Sector', value: (i) => esc(i.sector), cls: 'l dim' },
-      { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last },
-      ...keys.map((k) => ({ label: FIELDS[k][0], value: (i) => num(FIELDS[k][1](i), k === 'cap' ? 1 : k === 'beta' ? 2 : 1), cls: `r ${k === sortF.field ? 'sorted' : ''}`, cellCls: k === 'chg' || k === 'ret' ? (i) => dir(FIELDS[k][1](i)) : undefined })),
+      { label: 'Sector', value: (i) => esc(i.sector), cls: 'l dim scrn-sector' },
+      { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last, sort: 'px' },
+      ...keys.map((k) => ({ label: FIELDS[k][0], title: FIELDS[k][3], sort: k, value: (i) => (val(i, k) == null ? '<span class="dim">—</span>' : num(val(i, k), FIELDS[k][2])), cls: 'r', cellCls: k === 'chg' || k === 'ret' || k === 'off' ? (i) => dir(val(i, k)) : undefined })),
+      { label: '', value: (i) => `<a href="#" class="tb bt-link" data-bt="${esc(i.sym)}" title="Backtest a trading rule on ${esc(i.sym)}">Test ›</a>`, cls: 'r' },
     ], { onRow: (k) => ctx.app.load(k) });
+    const cols = t.cols;
+    const ths = [...t.table.querySelectorAll('th')];
+    ths.forEach((th, idx) => {
+      if (!cols[idx].sort) return;
+      th.classList.add('sortable');
+      th.addEventListener('click', () => {
+        const f = cols[idx].sort;
+        q.sort = q.sort.field === f ? { field: f, desc: !q.sort.desc } : { field: f, desc: f !== 'pe' && f !== 'vol' && f !== 'beta' && f !== 'rsi' };
+        persist();
+        update();
+      });
+    });
+    t.table.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-bt]');
+      if (!a) return;
+      e.preventDefault();
+      ctx.app.run(`${a.dataset.bt} BT`, ctx.panel);
+    });
     const update = () => {
-      const f = FIELDS[sortF.field][1];
-      const rows = applyScreen(E.equities, q).sort((a, b) => (sortF.desc ? f(b) - f(a) : f(a) - f(b)));
-      count.textContent = `· ${rows.length} of ${E.equities.length} match`;
+      const f = q.sort.field;
+      // stocks with no value for the sort column go last whichever way it's sorted
+      const rows = applyScreen(E.equities, q).sort((a, b) => {
+        const x = val(a, f);
+        const y = val(b, f);
+        if (x == null || y == null) return (x == null) - (y == null);
+        return q.sort.desc ? y - x : x - y;
+      });
+      ths.forEach((th, idx) => {
+        const on = cols[idx].sort === f;
+        th.classList.toggle('sorted', on);
+        th.textContent = cols[idx].label + (on ? (q.sort.desc ? ' ↓' : ' ↑') : '');
+      });
+      info.innerHTML = `<b>${rows.length} of ${E.equities.length}</b><span class="dim">match · tap a column to sort · <i>Test</i> = backtest</span>`;
       t.set(rows.map((i) => Object.assign(i, { key: i.sym, rowCls: '' })));
     };
+    drawBar();
+    drawForm();
     update();
     return { update, every: 2 };
   },

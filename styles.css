@@ -298,3 +298,21 @@ a.sec:hover { text-decoration: underline; }
 .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 14px; padding: 0 6px; }
 a.doc { color: var(--link-b); text-decoration: none; }
 a.doc:hover { text-decoration: underline; }
+
+/* SCRN screener and BT backtest: filter forms that wrap onto as many rows as the panel needs */
+.scrn-form, .bt-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--dim); }
+.scrn-form label, .bt-form label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.scrn-form label span { display: flex; gap: 3px; }
+.scrn-form input, .scrn-form select, .bt-form input { width: 100%; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 3px 4px; font: inherit; font-size: 12px; }
+.scrn-form input:focus, .scrn-form select:focus, .bt-form input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.tbl th.sortable { cursor: pointer; user-select: none; }
+.tbl th.sortable:hover { color: var(--text); }
+.tbl .bt-link { padding: 0 6px; font-size: 11px; text-decoration: none; }
+.bt .bt-chart { flex: 1 0 260px; }
+.scrn-form[hidden] { display: none; }
+.bt .bt-trades { flex: 0 0 auto; overflow: visible; }
+@media (max-width: 900px) {
+  .scrn-form, .bt-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scrn-sector { display: none; }
+  .bt .bt-chart { flex-basis: 240px; }
+}

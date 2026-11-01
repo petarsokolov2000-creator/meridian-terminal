@@ -10,6 +10,7 @@ import './functions/security.js';
 import { trade, checkAlerts } from './functions/tools.js';
 import './functions/live-fns.js';
 import './functions/fundamentals.js';
+import './functions/backtest.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },

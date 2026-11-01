@@ -57,7 +57,7 @@ export function createSec({ fetchImpl = fetch } = {}) {
           url: doc ? `https://www.sec.gov/Archives/edgar/data/${hit.cik}/${String(acc).replace(/-/g, '')}/${doc}` : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik10}`,
         });
       }
-      return { company: data?.name || hit.title, cik: hit.cik, filings: out, edgar: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik10}&type=&dateb=&owner=include&count=40` };
+      return { company: data?.name || hit.title, cik: hit.cik, source: 'SEC EDGAR', filings: out, edgar: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik10}&type=&dateb=&owner=include&count=40` };
     });
   }
 

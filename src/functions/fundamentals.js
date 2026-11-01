@@ -270,7 +270,7 @@ register({
         list.innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Filed</th><th class="l">Form</th><th class="l">What it is</th><th class="l">Period</th><th class="l"></th></tr></thead><tbody>
           ${rows.map((f) => `<tr><td class="l">${esc(f.date)}</td><td class="l"><b>${esc(f.form)}</b></td><td class="l dim">${esc(FORM_INFO[f.form] || f.description || '')}</td><td class="l dim">${esc(f.reportDate || '')}</td><td class="l"><a class="doc" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a></td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty">No filings of this kind in the recent list.</div>';
-        list.insertAdjacentHTML('beforeend', `<p class="note">${esc(d.company)} · SEC CIK ${d.cik} · source: SEC EDGAR (official). Documents open in your browser.</p>`);
+        list.insertAdjacentHTML('beforeend', d.cik ? `<p class="note">${esc(d.company)} · SEC CIK ${d.cik} · source: SEC EDGAR (official). Documents open in your browser.</p>` : `<p class="note">${esc(d.company)} · source: Yahoo Finance's copy of the SEC list, because the SEC didn't answer (${esc(d.secError || 'unavailable')}). Documents open in your browser.</p>`);
       };
       bar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-tab]');

@@ -258,6 +258,20 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
+  // SEC filings as Yahoo lists them: the backup for FILE when the SEC itself refuses.
+  async function filings(symbol) {
+    return cached(`filings:${symbol}`, 30 * 60e3, async () => {
+      const data = await withCrumb((c) => `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=secFilings,quoteType&crumb=${encodeURIComponent(c)}`);
+      const r = data?.quoteSummary?.result?.[0];
+      const list = (r?.secFilings?.filings || []).map((f) => ({
+        form: f.type || '', date: f.date || (f.epochDate ? new Date(f.epochDate * 1000).toISOString().slice(0, 10) : null), reportDate: null,
+        description: f.title || '', url: f.edgarUrl || f.exhibits?.[0]?.url || null,
+      })).filter((f) => f.url);
+      if (!list.length) throw new YahooError(`Yahoo lists no SEC filings for ${symbol}`, 404);
+      return { company: r?.quoteType?.longName || r?.quoteType?.shortName || symbol, cik: null, filings: list, edgar: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol)}`, source: 'Yahoo Finance' };
+    });
+  }
+
   // Earnings history and estimates, ownership, insider trades and key statistics.
   async function details(symbol) {
     return cached(`details:${symbol}`, 60 * 60e3, async () => {
@@ -327,7 +341,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { chart, quotes, news, search, profile, options, statements, details, events, normalizeChart, normalizeQuote };
+  return { chart, quotes, news, search, profile, options, statements, details, events, filings, normalizeChart, normalizeQuote };
 }
 
 export async function pool(items, size, fn) {

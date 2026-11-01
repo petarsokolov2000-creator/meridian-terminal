@@ -163,7 +163,19 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     '/api/statements': async (q) => yahoo.statements(needSym(q), q.get('freq')),
     '/api/details': async (q) => yahoo.details(needSym(q)),
     '/api/events': async (q) => yahoo.events(needSym(q)),
-    '/api/filings': async (q) => sec.filings(needSym(q)),
+    // The SEC first (official, complete); if it refuses or is unreachable, Yahoo's list.
+    '/api/filings': async (q) => {
+      const s = needSym(q);
+      try {
+        return await sec.filings(s);
+      } catch (err) {
+        try {
+          return { ...(await yahoo.filings(s)), secError: err.message };
+        } catch {
+          throw err;
+        }
+      }
+    },
     '/api/options': async (q) => yahoo.options(needSym(q), Number(q.get('date')) || null),
   };
 

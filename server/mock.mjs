@@ -110,6 +110,8 @@ function summary(s) {
   return {
     quoteSummary: {
       result: [{
+        secFilings: { filings: [{ date: '2026-10-30', epochDate: 1793318400, type: '10-K', title: 'Annual report', edgarUrl: 'https://finance.yahoo.com/sec-filing/mock/10k' }, { date: '2026-08-01', epochDate: 1785542400, type: '10-Q', title: 'Quarterly report', edgarUrl: 'https://finance.yahoo.com/sec-filing/mock/10q' }] },
+        quoteType: { longName: `${s} Mock Corp` },
         assetProfile: { longBusinessSummary: `${s} Mock Corp makes mock products for testing.`, sector: 'Technology', industry: 'Software', fullTimeEmployees: 12000, country: 'United States', website: 'https://example.com' },
         financialData: { targetMeanPrice: v(base(s) * 1.1), targetHighPrice: v(base(s) * 1.4), targetLowPrice: v(base(s) * 0.8), recommendationMean: v(2.1), recommendationKey: 'buy', numberOfAnalystOpinions: v(30), totalRevenue: v(3.9e11), revenueGrowth: v(0.06), grossMargins: v(0.46), operatingMargins: v(0.31), ebitdaMargins: v(0.34), profitMargins: v(0.25), ebitda: v(1.3e11), totalDebt: v(1.0e11), totalCash: v(6e10), freeCashflow: v(1.0e11), returnOnEquity: v(1.5), debtToEquity: v(150) },
         recommendationTrend: { trend: [{ period: '0m', strongBuy: 10, buy: 20, hold: 12, sell: 2, strongSell: 1 }] },
@@ -152,6 +154,8 @@ function timeseries(u) {
 }
 
 function sec(u) {
+  // MERIDIAN_MOCK_SEC=403 imitates the SEC refusing automated requests
+  if (process.env.MERIDIAN_MOCK_SEC) return new Response('Forbidden', { status: Number(process.env.MERIDIAN_MOCK_SEC) });
   if (u.pathname === '/files/company_tickers.json') return ok({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' }, 1: { cik_str: 1067983, ticker: 'BRK-B', title: 'BERKSHIRE HATHAWAY INC' } });
   if (u.pathname === '/submissions/CIK0000320193.json') {
     return ok({ name: 'Apple Inc.', filings: { recent: {

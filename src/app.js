@@ -13,6 +13,7 @@ import './functions/fundamentals.js';
 import './functions/backtest.js';
 import './functions/supply.js';
 import './functions/valuation.js';
+import './functions/quality.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },

@@ -172,6 +172,13 @@ const REAL = {
       PaymentsToAcquirePropertyPlantAndEquipment: [11247, 12734, 12451, 13313, 10495, 7309, 11085, 10708, 10959, 9447],
       EarningsPerShareDiluted: [9.22, 8.31, 9.21, 11.91, 11.89, 3.28, 5.61, 6.11, 6.13, 6.08],
       WeightedAverageNumberOfDilutedSharesOutstanding: [5793.069, 5500.281, 5251.692, 5000.109, 4648.913, 17528.214, 16864.919, 16325.819, 15812.547, 15408.095],
+      GrossProfit: [93626, 84263, 88186, 101839, 98392, 104956, 152836, 170782, 169148, 180683],
+      IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest: [72515, 61372, 64089, 72903, 65737, 67091, 109207, 119103, 113736, 123485],
+      IncomeTaxExpenseBenefit: [19121, 15685, 15738, 13372, 10481, 9680, 14527, 19300, 16741, 29749],
+      InterestExpense: [733, 1456, 2323, 3240, 3576, 2873, 2645, 2931, 3933, null],
+      ShareBasedCompensation: [3586, 4210, 4840, 5340, 6068, 6829, 7906, 9038, 10833, 11688],
+      PaymentsForRepurchaseOfCommonStock: [35253, 29722, 32900, 72738, 66897, 72358, 85971, 89402, 77550, 94949],
+      PaymentsOfDividends: [11561, 12150, 12769, 13712, 14119, 14081, 14467, 14841, 15025, 15234],
     },
     i: {
       CashAndCashEquivalentsAtCarryingValue: [null, null, null, 25913, 48844, 38016, 34940, 23646, 29965, 29943],
@@ -187,12 +194,13 @@ const REAL = {
   },
   XOM: { cik: 34088, sic: 2911, sicDescription: 'PETROLEUM REFINING', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
     d: { Revenues: [344582, 349585], NetIncomeLoss: [36010, 33680], DepreciationDepletionAndAmortization: [20641, 23442], NetCashProvidedByUsedInOperatingActivities: [55369, 55022],
-      PaymentsToAcquirePropertyPlantAndEquipment: [21919, 24306], EarningsPerShareDiluted: [8.89, 7.84], WeightedAverageNumberOfDilutedSharesOutstanding: [4052, 4299] },
+      PaymentsToAcquirePropertyPlantAndEquipment: [21919, 24306], EarningsPerShareDiluted: [8.89, 7.84], WeightedAverageNumberOfDilutedSharesOutstanding: [4052, 4299],
+      PaymentsForRepurchaseOfCommonStock: [17748, 19629], PaymentsOfDividendsCommonStock: [14941, 16704] },
     i: { CashAndCashEquivalentsAtCarryingValue: [31539, 23029], LongTermDebtNoncurrent: [37483, 36755], ShortTermBorrowings: [4090, 4955], StockholdersEquity: [204802, 263705], CommonStockSharesOutstanding: [3973, 4343] },
   },
   JPM: { cik: 19617, sic: 6021, sicDescription: 'NATIONAL COMMERCIAL BANKS', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
-    d: { RevenuesNetOfInterestExpense: [158104, 177556], NetIncomeLoss: [49552, 58471], EarningsPerShareDiluted: [16.23, 19.75], CommonStockDividendsPerShareDeclared: [4.10, 4.80], WeightedAverageNumberOfDilutedSharesOutstanding: [2943, 2897] },
-    i: { StockholdersEquity: [327878, 344758], PreferredStockValue: [27404, 20050], Goodwill: [52634, 52565], CommonStockSharesOutstanding: [2875, 2797] },
+    d: { RevenuesNetOfInterestExpense: [158104, 177556], NetIncomeLoss: [49552, 58471], NoninterestExpense: [87172, 91797], EarningsPerShareDiluted: [16.23, 19.75], CommonStockDividendsPerShareDeclared: [4.10, 4.80], WeightedAverageNumberOfDilutedSharesOutstanding: [2943, 2897] },
+    i: { StockholdersEquity: [327878, 344758], PreferredStockValue: [27404, 20050], Goodwill: [52634, 52565], CommonStockSharesOutstanding: [2875, 2797], Assets: [3875393, 4002814] },
   },
 };
 const MOCK_SIC = { DELL: 3571, HPQ: 3571, SMCI: 3571, HPE: 3571, CVX: 2911, COP: 2911, PSX: 2911, MPC: 2911, VLO: 2911, BAC: 6021, WFC: 6021, C: 6021, USB: 6021, PNC: 6021, MSFT: 7372, ORCL: 7372 };
@@ -209,7 +217,7 @@ async function mockTickers() {
 }
 function secConcept(cik, tag) {
   const real = Object.entries(REAL).find(([, r]) => r.cik === cik);
-  const isDur = !/^(Cash|Marketable|LongTermDebt|Commercial|ShortTerm|Stockholders|Preferred|Goodwill|CommonStockShares|Intangible)/.test(tag);
+  const isDur = !/^(Cash|Marketable|LongTermDebt|Commercial|ShortTerm|Stockholders|PreferredStockValue|Goodwill|CommonStockShares|Intangible|Assets$)/.test(tag);
   const unit = PER_SHARE.test(tag) ? 'USD/shares' : SHARES.test(tag) && !/^Payments/.test(tag) ? 'shares' : 'USD';
   const scale = unit === 'USD/shares' ? 1 : 1e6;
   const rows = [];
@@ -232,7 +240,8 @@ function secConcept(cik, tag) {
   const r = rng(seedOf(`${cik}${tag}`));
   const want = { RevenueFromContractWithCustomerExcludingAssessedTax: 40000, OperatingIncomeLoss: 8000, NetIncomeLoss: 6000, DepreciationDepletionAndAmortization: 1500, NetCashProvidedByUsedInOperatingActivities: 9000,
     PaymentsToAcquirePropertyPlantAndEquipment: 2000, EarningsPerShareDiluted: 4, WeightedAverageNumberOfDilutedSharesOutstanding: 1500, CashAndCashEquivalentsAtCarryingValue: 5000, LongTermDebt: 12000,
-    StockholdersEquity: 20000, CommonStockSharesOutstanding: 1480, InterestExpense: 400, IncomeTaxExpenseBenefit: 1300, ShareBasedCompensation: 600, PaymentsForRepurchaseOfCommonStock: 2500, PaymentsOfDividends: 1500 }[tag];
+    StockholdersEquity: 20000, CommonStockSharesOutstanding: 1480, InterestExpense: 400, IncomeTaxExpenseBenefit: 1300, ShareBasedCompensation: 600, PaymentsForRepurchaseOfCommonStock: 2500, PaymentsOfDividends: 1500,
+    GrossProfit: 18000, IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest: 7600, Assets: 60000 }[tag];
   if (!want) return null;
   for (let k = 0; k < 12; k++) {
     const yr = 2014 + k;

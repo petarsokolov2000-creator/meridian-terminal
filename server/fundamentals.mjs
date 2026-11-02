@@ -17,6 +17,10 @@ const DAY = 86400e3;
 const TAGS = [
   ['revenue', 'd', 'USD', ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'RevenuesNetOfInterestExpense', 'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueGoodsNet']],
   ['opIncome', 'd', 'USD', ['OperatingIncomeLoss']],
+  ['grossProfit', 'd', 'USD', ['GrossProfit'], 'full'],
+  ['cogs', 'd', 'USD', ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'], 'full'],
+  ['nonInterestExpense', 'd', 'USD', ['NoninterestExpense'], 'full'],
+  ['prefDividends', 'd', 'USD', ['PreferredStockDividendsAndOtherAdjustments', 'DividendsPreferredStock'], 'full'],
   ['pretax', 'd', 'USD', ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments']],
   ['interest', 'd', 'USD', ['InterestExpense', 'InterestExpenseNonoperating', 'InterestExpenseDebt']],
   ['tax', 'd', 'USD', ['IncomeTaxExpenseBenefit'], 'full'],
@@ -37,6 +41,7 @@ const TAGS = [
   ['ltdNoncurrent', 'i', 'USD', ['LongTermDebtNoncurrent']],
   ['ltdCurrent', 'i', 'USD', ['LongTermDebtCurrent']],
   ['shortDebt', 'i', 'USD', ['CommercialPaper', 'ShortTermBorrowings', 'DebtCurrent']],
+  ['assets', 'i', 'USD', ['Assets'], 'full'],
   ['equity', 'i', 'USD', ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest']],
   ['preferred', 'i', 'USD', ['PreferredStockValue']],
   ['goodwill', 'i', 'USD', ['Goodwill']],
@@ -142,7 +147,7 @@ export function createFundamentals({ sec, yahoo, kvStore = null, log = () => {} 
         dividendsPaid: g('CashDividendsPaid', p) == null ? null : Math.abs(g('CashDividendsPaid', p)),
         epsDil: g('DilutedEPS', p), dps: null, sharesDil: g('DilutedAverageShares', p), sharesOut: g('OrdinarySharesNumber', p),
         cash: g('CashAndCashEquivalents', p), stInvest: null, debtYahoo: g('TotalDebt', p), equity: g('StockholdersEquity', p), preferred: null, goodwill: null, intangibles: null,
-        ebitdaYahoo: g('EBITDA', p),
+        ebitdaYahoo: g('EBITDA', p), grossProfit: g('GrossProfit', p), cogs: g('CostOfRevenue', p), assets: g('TotalAssets', p),
       };
     });
     return { years, currency: st.currency };
@@ -179,6 +184,10 @@ export function createFundamentals({ sec, yahoo, kvStore = null, log = () => {} 
       y.ebitda = y.ebitdaYahoo;
       f.ebitda = 'EBITDA (Yahoo)';
     } else y.ebitda = null;
+    if (y.grossProfit == null && y.revenue != null && y.cogs != null) {
+      y.grossProfit = y.revenue - y.cogs;
+      f.grossProfit = 'Revenue − cost of revenue';
+    } else f.grossProfit = 'Gross profit (as reported)';
     y.fcf = y.ocf == null || y.capex == null ? null : y.ocf - y.capex;
     f.fcf = 'Operating cash flow − capital expenditure';
     y.commonEquity = y.equity == null ? null : y.equity - (y.preferred ?? 0);

@@ -355,3 +355,7 @@ a.doc:hover { text-decoration: underline; }
 .dcf-form td.small { white-space: normal; min-width: 220px; }
 .dcf-sens td, .dcf-sens th { min-width: 60px; }
 @media (max-width: 900px) { .dcf-form td.small { min-width: 160px; } }
+
+/* QUAL and CAP */
+.q-tbl tr.q-sec td { color: var(--dim); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding-top: 8px; border-bottom: 1px solid var(--line); }
+.port-head .small { font-size: 10px; font-weight: 400; }

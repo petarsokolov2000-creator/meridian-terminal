@@ -222,7 +222,56 @@ export const LINKS = [
 
   // ---- property
   ['O', 'DG', 'Store leases (one of its largest tenants)', 'disclosed'],
+  // ---- AI servers and cloud (companies added with the 1,000+ list)
+  ['NVDA', 'SMCI', 'GPUs for its AI servers', 'disclosed'],
+  ['NVDA', 'DELL', 'GPUs for its AI servers', 'disclosed'],
+  ['NVDA', 'HPE', 'GPUs for its AI servers', 'disclosed'],
+  ['NVDA', 'CRWV', 'GPUs for its AI cloud', 'disclosed'],
+  ['CRWV', 'MSFT', 'Rented AI computing power (its largest customer)', 'disclosed'],
+  ['NVDA', 'NBIS', 'GPUs for its AI cloud', 'disclosed'],
+  ['NBIS', 'MSFT', 'Rented AI computing power (multi-year deal)', 'disclosed'],
+  ['MRVL', 'AMZN', 'Custom AI and networking chips for AWS', 'disclosed'],
+  ['TSM', 'MRVL', 'Manufactures its chips', 'reported'],
+  ['KLAC', 'TSM', 'Chip inspection and measuring equipment', 'disclosed'],
+  ['KLAC', '005930.KS', 'Chip inspection and measuring equipment', 'disclosed'],
+  ['AMZN', 'SNOW', 'Cloud computing (AWS, where most of it runs)', 'disclosed'],
+  ['AMZN', 'DDOG', 'Cloud computing (AWS)', 'disclosed'],
+  ['AMZN', 'CRWD', 'Cloud computing (AWS)', 'disclosed'],
+  ['AMZN', 'MDB', 'Cloud computing (AWS, one of the clouds it runs on)', 'disclosed'],
+  ['GEV', 'CVX', 'Gas turbines for power plants for data centres', 'disclosed'],
+  ['TLN', 'AMZN', 'Nuclear power for its data centres (Susquehanna plant)', 'disclosed'],
+
+  // ---- medicines
+  ['CAH', 'CVS', 'Generic and brand medicines (its largest customer)', 'disclosed'],
+  ['REGN', 'SNY', 'Makes Dupixent, which the two sell together (collaboration)', 'disclosed'],
+  ['BNTX', 'PFE', 'COVID vaccine developed together (profit-sharing partnership)', 'disclosed'],
+
+  // ---- planes and freight
+  ['BA', 'DAL', 'Passenger jets', 'disclosed'],
+  ['BA', 'UAL', 'Passenger jets (incl. 787 Dreamliners)', 'disclosed'],
+  ['BA', 'LUV', 'Passenger jets (an all-737 fleet)', 'disclosed'],
+  ['BA', 'FDX', 'Freighter jets', 'disclosed'],
+  ['RIVN', 'AMZN', 'Electric delivery vans', 'disclosed'],
+
+  // ---- food, drinks and household goods: Walmart is the largest customer of most of them
+  ['CL', 'WMT', 'Toothpaste, soap and pet food (Walmart ~11% of sales)', 'disclosed'],
+  ['KMB', 'WMT', 'Tissues, nappies and paper (its largest customer)', 'disclosed'],
+  ['CLX', 'WMT', 'Cleaning products (its largest customer)', 'disclosed'],
+  ['CHD', 'WMT', 'Household products (its largest customer)', 'disclosed'],
+  ['GIS', 'WMT', 'Cereal and packaged food (its largest customer)', 'disclosed'],
+  ['KHC', 'WMT', 'Packaged food (its largest customer)', 'disclosed'],
+  ['HSY', 'WMT', 'Chocolate and snacks (its largest customer)', 'disclosed'],
+  ['CPB', 'WMT', 'Soup and snacks (its largest customer)', 'disclosed'],
+  ['SJM', 'WMT', 'Coffee, peanut butter and pet food (its largest customer)', 'disclosed'],
+  ['TSN', 'WMT', 'Chicken, beef and pork (its largest customer)', 'disclosed'],
+  ['HRL', 'WMT', 'Meat and packaged food (its largest customer)', 'disclosed'],
+  ['HAS', 'WMT', 'Toys and games (a top customer)', 'disclosed'],
+  ['HAS', 'AMZN', 'Toys and games (a top customer)', 'disclosed'],
+  ['PEP', 'YUM', 'Drinks for Taco Bell, KFC and Pizza Hut', 'disclosed'],
+  ['CELH', 'PEP', 'Energy drinks it distributes (most of Celsius sales)', 'disclosed'],
+  ['MNST', 'KO', "Energy drinks distributed through Coca-Cola's bottlers", 'disclosed'],
 ];
+
 
 
 /** Suppliers and customers of `sym`, each { sym, what, basis }. */

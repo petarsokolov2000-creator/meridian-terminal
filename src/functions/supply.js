@@ -25,11 +25,15 @@ register({
       ctx.el.addEventListener('click', go);
       return;
     }
-    const name = (sym) => E.get(sym)?.name || OUTSIDE[sym] || sym;
+    // companies from the 1,000+ list that haven't been opened yet: name and move from the light entry
+    E.moreList?.();
+    const light = (sym) => E.moreBySym?.get(sym);
+    const name = (sym) => E.get(sym)?.name || light(sym)?.name || OUTSIDE[sym] || sym;
     const move = (sym) => {
-      const i = E.get(sym);
+      const i = E.get(sym) || light(sym);
       return i && Number.isFinite(i.pct) ? i.pct * 100 : null;
     };
+    const needMore = [...suppliers, ...customers, { sym: s.sym }].some((x) => !E.get(x.sym) && light(x.sym));
     const movTxt = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${num(v, 2)}%`);
 
     const map = el('div', 'supp-map');
@@ -82,7 +86,7 @@ register({
     const table = (title, rows, empty) => `<div class="pane"><h3>${title}</h3>${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Company</th><th class="l">What</th><th class="r">Today</th><th class="l">Basis</th></tr></thead><tbody>
       ${rows.map((x) => {
         const v = move(x.sym);
-        return `<tr data-sup="${esc(x.sym)}" class="supp-row"><td class="l" title="${esc(name(x.sym))}"><a href="#" class="sec" data-sup="${esc(x.sym)}">${esc(x.sym)}</a>${OUTSIDE[x.sym] ? ` <span class="dim">${esc(OUTSIDE[x.sym])}</span>` : ''}</td><td class="l supp-what">${esc(x.what)}</td><td class="r ${dir(v)}">${movTxt(v) || '<span class="dim">—</span>'}</td><td class="l dim" title="${esc(BASIS_HELP[x.basis])}">${BASIS[x.basis]}</td></tr>`;
+        return `<tr data-sup="${esc(x.sym)}" class="supp-row"><td class="l" title="${esc(name(x.sym))}"><a href="#" class="sec" data-sup="${esc(x.sym)}">${esc(x.sym)}</a>${!E.get(x.sym) ? ` <span class="dim">${esc(name(x.sym))}</span>` : ''}</td><td class="l supp-what">${esc(x.what)}</td><td class="r ${dir(v)}">${movTxt(v) || '<span class="dim">—</span>'}</td><td class="l dim" title="${esc(BASIS_HELP[x.basis])}">${BASIS[x.basis]}</td></tr>`;
       }).join('')}</tbody></table></div>` : `<p class="note">${empty}</p>`}</div>`;
     lists.innerHTML = table(`Suppliers — ${esc(s.sym)} buys from`, suppliers, `No suppliers of ${esc(s.sym)} on file.`) +
       table(`Customers — ${esc(s.sym)} sells to`, customers, `No customers of ${esc(s.sym)} on file.`);
@@ -109,6 +113,7 @@ register({
       c.textContent = movTxt(move(s.sym));
       c.setAttribute('class', `t-mov ${dir(move(s.sym))}`);
     };
+    if (needMore) E.moreQuotes().then(update, () => {});
     return { update, every: 2 };
   },
 });

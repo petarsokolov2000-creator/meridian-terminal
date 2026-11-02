@@ -14,6 +14,7 @@ import './functions/backtest.js';
 import './functions/supply.js';
 import './functions/valuation.js';
 import './functions/quality.js';
+import './functions/business.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },

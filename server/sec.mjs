@@ -95,5 +95,28 @@ export function createSec({ fetchImpl = fetch } = {}) {
     }
   });
 
-  return { filings, cikOf, profile, concept };
+  // The company's latest annual report (10-K) and its full text (inline XBRL HTML).
+  const latest10K = (cik) => cached(`10k:${cik}`, 12 * 60 * 60e3, async () => {
+    const d = await json(`https://data.sec.gov/submissions/CIK${String(cik).padStart(10, '0')}.json`);
+    const r = d?.filings?.recent || {};
+    const forms = r.form || [];
+    let i = forms.findIndex((f) => f === '10-K');
+    let form = '10-K';
+    if (i < 0) {
+      i = forms.findIndex((f) => f === '20-F' || f === '40-F');
+      form = i >= 0 ? forms[i] : null;
+    }
+    if (i < 0) throw Object.assign(new Error('no 10-K annual report among its recent SEC filings'), { status: 404 });
+    const acc = String(r.accessionNumber[i]).replace(/-/g, '');
+    return { cik, form, filed: r.filingDate?.[i] || null, reportDate: r.reportDate?.[i] || null, url: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/${r.primaryDocument[i]}`, index: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/` };
+  });
+  const documentText = (url) => cached(`doc:${url}`, 12 * 60 * 60e3, async () => {
+    await throttle();
+    const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'text/html' }, signal: AbortSignal.timeout(60000) });
+    if (res.status === 403 || res.status === 429) throw Object.assign(new Error(`the SEC refused the request (${res.status}); it limits automated access, so try again in a few minutes`), { status: 503 });
+    if (!res.ok) throw Object.assign(new Error(`SEC answered ${res.status}`), { status: res.status });
+    return res.text();
+  });
+
+  return { filings, cikOf, profile, concept, latest10K, documentText };
 }

@@ -359,3 +359,11 @@ a.doc:hover { text-decoration: underline; }
 /* QUAL and CAP */
 .q-tbl tr.q-sec td { color: var(--dim); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding-top: 8px; border-bottom: 1px solid var(--line); }
 .port-head .small { font-size: 10px; font-weight: 400; }
+
+/* SEG, RISK, ETF */
+.seg-col { width: 22%; min-width: 60px; }
+.seg-bar { display: inline-block; height: 8px; background: color-mix(in oklab, var(--accent) 70%, transparent); border-radius: 1px; vertical-align: middle; }
+.risk-list { padding: 2px 10px 6px; }
+.risk-list h3 { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: 0.04em; margin: 10px 0 4px; }
+.risk-item { padding: 3px 0; border-bottom: 1px dotted var(--line); line-height: 1.45; }
+@media (max-width: 900px) { .seg-col { display: none; } }

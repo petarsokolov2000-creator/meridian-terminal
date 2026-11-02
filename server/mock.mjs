@@ -106,8 +106,30 @@ function options(s) {
   return { optionChain: { result: [{ underlyingSymbol: s, expirationDates: [exp, exp + 28 * 86400, exp + 91 * 86400], strikes, quote: { regularMarketPrice: spot }, options: [{ expirationDate: exp, calls: strikes.map((k) => leg(k, true)), puts: strikes.map((k) => leg(k, false)) }] }], error: null } };
 }
 
+// ETF test data: published expense ratios (SPY 0.0945%, QQQ 0.20%, XLK 0.08%); holdings weights are
+// round numbers for testing, not the funds' current weights.
+const ETFS = {
+  SPY: { name: 'SPDR S&P 500 ETF Trust', family: 'SPDR State Street Global Advisors', category: 'Large Blend', er: 0.000945, assets: 6.3e11,
+    h: [['NVDA', 0.075], ['MSFT', 0.065], ['AAPL', 0.064], ['AMZN', 0.039], ['META', 0.03], ['AVGO', 0.025], ['GOOGL', 0.021], ['GOOG', 0.017], ['TSLA', 0.017], ['BRK-B', 0.016]],
+    s: { technology: 0.33, financial_services: 0.13, communication_services: 0.1, consumer_cyclical: 0.1, healthcare: 0.09, industrials: 0.08, consumer_defensive: 0.05, energy: 0.03, utilities: 0.025, realestate: 0.02, basic_materials: 0.02 } },
+  QQQ: { name: 'Invesco QQQ Trust, Series 1', family: 'Invesco', category: 'Large Growth', er: 0.002, assets: 3.6e11,
+    h: [['NVDA', 0.095], ['MSFT', 0.085], ['AAPL', 0.08], ['AMZN', 0.055], ['AVGO', 0.05], ['META', 0.035], ['NFLX', 0.03], ['TSLA', 0.03], ['COST', 0.028], ['GOOGL', 0.027]],
+    s: { technology: 0.52, communication_services: 0.16, consumer_cyclical: 0.13, consumer_defensive: 0.05, healthcare: 0.05, industrials: 0.05, utilities: 0.015, basic_materials: 0.01, financial_services: 0.005 } },
+  XLK: { name: 'Technology Select Sector SPDR Fund', family: 'SPDR State Street Global Advisors', category: 'Technology', er: 0.0008, assets: 7.5e10,
+    h: [['NVDA', 0.15], ['MSFT', 0.13], ['AAPL', 0.12], ['AVGO', 0.05], ['ORCL', 0.035], ['PLTR', 0.03], ['CRM', 0.025], ['CSCO', 0.024], ['IBM', 0.022], ['AMD', 0.02]],
+    s: { technology: 1.0 } },
+};
 function summary(s) {
   const v = (x) => ({ raw: x, fmt: String(x) });
+  const e = ETFS[s];
+  if (e) {
+    return { quoteSummary: { result: [{
+      quoteType: { quoteType: 'ETF', longName: e.name }, price: { longName: e.name },
+      fundProfile: { family: e.family, categoryName: e.category, legalType: 'Exchange Traded Fund', feesExpensesInvestment: { annualReportExpenseRatio: v(e.er) } },
+      summaryDetail: { totalAssets: v(e.assets), yield: v(0.012) }, defaultKeyStatistics: { fundInceptionDate: v(727660800) },
+      topHoldings: { stockPosition: v(0.998), bondPosition: v(0), cashPosition: v(0.002), holdings: e.h.map(([sym, w]) => ({ symbol: sym, holdingName: `${sym} Mock Corp`, holdingPercent: v(w) })), sectorWeightings: Object.entries(e.s).map(([k, w]) => ({ [k]: v(w) })) },
+    }], error: null } };
+  }
   return {
     quoteSummary: {
       result: [{
@@ -251,6 +273,67 @@ function secConcept(cik, tag) {
   return { cik, taxonomy: 'us-gaap', tag, units: { [unit]: rows } };
 }
 
+// ---- 10-K documents (inline XBRL) for SEG and RISK -------------------------------------------
+// AAPL: Apple's published FY2022-2024 revenue by reportable segment (geographic), by product and
+// by country (USD millions; each set adds up to total net sales). XOM, JPM and others: generated
+// segment numbers. Risk-factor headings: written for these tests, not taken from any filing.
+const APPLE_SEG = {
+  ends: ['2022-09-24', '2023-09-30', '2024-09-28'], starts: ['2021-09-26', '2022-09-25', '2023-10-01'], total: [394328, 383285, 391035],
+  segment: { 'aapl:AmericasSegmentMember': [169658, 162560, 167045], 'aapl:EuropeSegmentMember': [95118, 94294, 101328], 'aapl:GreaterChinaSegmentMember': [74200, 72559, 66952], 'aapl:JapanSegmentMember': [25977, 24257, 25052], 'aapl:RestOfAsiaPacificSegmentMember': [29375, 29615, 30658] },
+  product: { 'us-gaap:IPhoneMember': [205489, 200583, 201183], 'us-gaap:MacMember': [40177, 29357, 29984], 'us-gaap:IPadMember': [29292, 28300, 26694], 'aapl:WearablesHomeandAccessoriesMember': [41241, 39845, 37005], 'us-gaap:ServiceMember': [78129, 85200, 96169] },
+  geography: { 'country:US': [147859, 138573, 142196], 'country:CN': [74200, 72559, 66952], 'aapl:OtherCountriesMember': [172269, 172153, 181887] },
+};
+function tenkHtml(ticker) {
+  const real = ticker === 'AAPL' ? APPLE_SEG : null;
+  const r = rng(seedOf(`10k${ticker}`));
+  const ends = real ? real.ends : ['2022-12-31', '2023-12-31', '2024-12-31'];
+  const starts = real ? real.starts : ['2022-01-01', '2023-01-01', '2024-01-01'];
+  const gen = (names) => Object.fromEntries(names.map((n, k) => [n, ends.map((_, j) => Math.round((20000 - k * 3000) * (1 + 0.05 * j) * (0.9 + r() * 0.2)))]));
+  const set = real || {
+    segment: gen(ticker === 'XOM' ? ['xom:UpstreamMember', 'xom:EnergyProductsMember', 'xom:ChemicalProductsMember', 'xom:SpecialtyProductsMember'] : ticker === 'JPM' ? ['jpm:ConsumerCommunityBankingMember', 'jpm:CommercialInvestmentBankMember', 'jpm:AssetWealthManagementMember', 'us-gaap:CorporateNonSegmentMember'] : ['mock:AlphaSegmentMember', 'mock:BetaSegmentMember']),
+    geography: gen(['country:US', 'srt:EuropeMember', 'srt:AsiaPacificMember']),
+  };
+  const total = real ? real.total : ends.map((_, j) => Object.values(set.segment).reduce((a, v) => a + v[j], 0));
+  const tag = ticker === 'JPM' ? 'us-gaap:RevenuesNetOfInterestExpense' : 'us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax';
+  const ctxs = [];
+  const facts = [];
+  let n = 0;
+  const ctx = (j, dims) => {
+    const id = `c-${++n}`;
+    ctxs.push(`<xbrli:context id="${id}"><xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">0</xbrli:identifier>${dims.length ? `<xbrli:segment>${dims.map(([a, m]) => `<xbrldi:explicitMember dimension="${a}">${m}</xbrldi:explicitMember>`).join('')}</xbrli:segment>` : ''}</xbrli:entity><xbrli:period><xbrli:startDate>${starts[j]}</xbrli:startDate><xbrli:endDate>${ends[j]}</xbrli:endDate></xbrli:period></xbrli:context>`);
+    return id;
+  };
+  const fact = (id, v) => facts.push(`<td><ix:nonFraction name="${tag}" contextRef="${id}" unitRef="usd" decimals="-6" scale="6" format="ixt:num-dot-decimal">${v.toLocaleString('en-US')}</ix:nonFraction></td>`);
+  ends.forEach((_, j) => fact(ctx(j, []), total[j]));
+  for (const [axis, key] of [['us-gaap:StatementBusinessSegmentsAxis', 'segment'], ['srt:ProductOrServiceAxis', 'product'], ['srt:StatementGeographicalAxis', 'geography']]) {
+    for (const [member, vals] of Object.entries(set[key] || {})) ends.forEach((_, j) => fact(ctx(j, axis === 'us-gaap:StatementBusinessSegmentsAxis' ? [[axis, member], ['srt:ConsolidationItemsAxis', 'us-gaap:OperatingSegmentsMember']] : [[axis, member]]), vals[j]));
+  }
+  // generated companies: one tagged major customer (12% of revenue)
+  if (!real && !['XOM', 'JPM'].includes(ticker)) {
+    const id = `c-${++n}`;
+    ctxs.push(`<xbrli:context id="${id}"><xbrli:entity><xbrli:identifier scheme="x">0</xbrli:identifier><xbrli:segment><xbrldi:explicitMember dimension="srt:MajorCustomersAxis">mock:CustomerAMember</xbrldi:explicitMember><xbrldi:explicitMember dimension="us-gaap:ConcentrationRiskByBenchmarkAxis">us-gaap:RevenueFromContractWithCustomerMember</xbrldi:explicitMember></xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>${starts[2]}</xbrli:startDate><xbrli:endDate>${ends[2]}</xbrli:endDate></xbrli:period></xbrli:context>`);
+    facts.push(`<td><ix:nonFraction name="us-gaap:ConcentrationRiskPercentage1" contextRef="${id}" unitRef="pure" scale="-2" decimals="2">12</ix:nonFraction>%</td>`);
+  }
+  const B = (t) => `<div><span style="font-weight:700;font-style:italic">${t}</span></div>`;
+  const P = (t) => `<div><span style="font-weight:400">${t}</span></div>`;
+  const risks = [
+    '<div><span style="font-weight:700">Macroeconomic and Industry Risks</span></div>',
+    B('Weak economic conditions in major markets could reduce demand for the company&#8217;s products.'), P('Ordinary paragraph explaining the risk in more detail, which is not a heading. '.repeat(4)),
+    B('Competition could lower prices and margins.'), P('More detail. '.repeat(20)),
+    '<div><span style="font-weight:700">Operational Risks</span></div>',
+    B('Disruption at key suppliers or manufacturing partners could delay shipments.'), P('Detail. '.repeat(20)),
+    B('Cyberattacks or system failures could harm the business and its reputation.'), P('Detail. '.repeat(20)),
+    '<div><span style="font-weight:700">Legal and Regulatory Risks</span></div>',
+    B('Changes in tax laws or new regulations could increase costs.'), P('Detail. '.repeat(20)),
+  ];
+  return `<html><body><ix:header><ix:resources>${ctxs.join('')}</ix:resources></ix:header>
+    <div>Table of contents</div><div>Item 1A. Risk Factors ..... 5</div><div>Item 1B. Unresolved Staff Comments ..... 17</div>
+    <div>Item 1. Business</div>${P('About the business. '.repeat(30))}
+    <div><span style="font-weight:700">Item 1A.&#160;&#160;&#160;&#160;Risk Factors</span></div>${risks.join('')}${P('Closing text. '.repeat(100))}
+    <div><span style="font-weight:700">Item 1B.&#160;&#160;&#160;&#160;Unresolved Staff Comments</span></div>${P('None.')}
+    <table><tr>${facts.join('')}</tr></table></body></html>`;
+}
+
 async function sec(u) {
   // MERIDIAN_MOCK_SEC=403 imitates the SEC refusing automated requests
   if (process.env.MERIDIAN_MOCK_SEC) return new Response('Forbidden', { status: Number(process.env.MERIDIAN_MOCK_SEC) });
@@ -260,11 +343,15 @@ async function sec(u) {
     return j ? ok(j) : new Response('{}', { status: 404 });
   }
   if (u.pathname === '/files/company_tickers.json') return ok(Object.fromEntries((await mockTickers()).map((t, k) => [k, t])));
+  if ((m = u.pathname.match(/^\/Archives\/edgar\/data\/(\d+)\/(\d+)\/[\w.-]+\.htm$/))) {
+    const t = (await mockTickers()).find((x) => x.cik_str === Number(m[1]));
+    return new Response(tenkHtml(t ? t.ticker : 'X'), { status: 200, headers: { 'content-type': 'text/html' } });
+  }
   if ((m = u.pathname.match(/^\/submissions\/CIK(\d{10})\.json$/)) && m[1] !== '0000320193') {
     const cik = Number(m[1]);
     const t = (await mockTickers()).find((x) => x.cik_str === cik);
     const real = t && REAL[t.ticker];
-    return ok({ name: t ? `${t.ticker} Mock Corp` : 'Unknown', sic: String(real?.sic ?? MOCK_SIC[t?.ticker] ?? 9999), sicDescription: real?.sicDescription ?? 'MOCK INDUSTRY', fiscalYearEnd: real?.fye ?? '1231', filings: { recent: {} } });
+    return ok({ name: t ? `${t.ticker} Mock Corp` : 'Unknown', sic: String(real?.sic ?? MOCK_SIC[t?.ticker] ?? 9999), sicDescription: real?.sicDescription ?? 'MOCK INDUSTRY', fiscalYearEnd: real?.fye ?? '1231', filings: { recent: { accessionNumber: [`000${cik}-25-000010`], filingDate: ['2025-02-14'], reportDate: ['2024-12-31'], form: ['10-K'], primaryDocument: [`${(t?.ticker || 'x').toLowerCase()}-20241231.htm`], primaryDocDescription: ['10-K'] } } });
   }
   if (u.pathname === '/submissions/CIK0000320193.json') {
     return ok({ name: 'Apple Inc.', sic: '3571', sicDescription: 'ELECTRONIC COMPUTERS', fiscalYearEnd: '0928', filings: { recent: {

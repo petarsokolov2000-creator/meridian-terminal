@@ -15,6 +15,7 @@ import { createSec } from './sec.mjs';
 import { MORE_COMPANIES } from '../src/companies.js';
 import { LIVE_EQUITIES } from '../src/live-universe.js';
 import { createFundamentals } from './fundamentals.mjs';
+import { createTenK } from './tenk.mjs';
 
 export const KEYS = {
   finnhub: { label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
@@ -46,6 +47,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const rates = createRates(opts);
   const sec = createSec(opts);
   const fundamentals = createFundamentals({ sec, yahoo, kvStore, log });
+  const tenk = createTenK({ sec });
   // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
   const SECTOR_OF = new Map([...LIVE_EQUITIES.map((e) => [e[0], e[2]]), ...MORE_COMPANIES.map((c) => [c[0], c[2]])]);
   const peerCandidates = (sym) => {
@@ -210,6 +212,10 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     '/api/valuation': async (q) => fundamentals.valuation(needSym(q)),
     '/api/peers': async (q) => fundamentals.peers(needSym(q), peerCandidates(needSym(q)), 6),
     '/api/peer-row': async (q) => fundamentals.peerRow(needSym(q)),
+    // SEG, RISK (the latest 10-K itself) and ETF (Yahoo fund data)
+    '/api/segments': async (q) => tenk.segments(needSym(q)),
+    '/api/risks': async (q) => tenk.risks(needSym(q)),
+    '/api/etf': async (q) => yahoo.etf(needSym(q)),
     '/api/options': async (q) => yahoo.options(needSym(q), Number(q.get('date')) || null),
   };
 

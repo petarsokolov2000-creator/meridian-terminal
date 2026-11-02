@@ -599,6 +599,15 @@ export class LiveEngine {
   peers(sym) {
     return api(`/api/peers?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
+  segments(sym) {
+    return api(`/api/segments?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  risks(sym) {
+    return api(`/api/risks?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  etf(ysym) {
+    return api(`/api/etf?symbol=${encodeURIComponent(ysym)}`);
+  }
   peerRow(ysym) {
     return api(`/api/peer-row?symbol=${encodeURIComponent(ysym)}`);
   }

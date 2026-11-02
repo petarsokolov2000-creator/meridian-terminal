@@ -274,6 +274,30 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
+  // ETF facts: expense ratio, assets, top holdings and sector weights (Yahoo lists the top 10).
+  async function etf(symbol) {
+    return cached(`etf:${symbol}`, 6 * 60 * 60e3, async () => {
+      const modules = 'topHoldings,fundProfile,summaryDetail,defaultKeyStatistics,quoteType,price';
+      const data = await withCrumb((c) => `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&crumb=${encodeURIComponent(c)}`);
+      const r = data?.quoteSummary?.result?.[0];
+      if (!r) throw new YahooError(`No fund data for ${symbol}`, 404);
+      const th = r.topHoldings || {};
+      const fp = r.fundProfile || {};
+      const ks = r.defaultKeyStatistics || {};
+      const sd = r.summaryDetail || {};
+      const type = r.quoteType?.quoteType || null;
+      const sectors = (th.sectorWeightings || []).map((o) => Object.entries(o)[0]).filter(([, v]) => raw(v) != null).map(([k, v]) => ({ sector: k, weight: raw(v) })).sort((a, b) => b.weight - a.weight);
+      return {
+        symbol, type, name: r.price?.longName || r.quoteType?.longName || symbol, family: fp.family || null, category: fp.categoryName || null, legalType: fp.legalType || null,
+        expenseRatio: raw(fp.feesExpensesInvestment?.annualReportExpenseRatio) ?? raw(ks.annualReportExpenseRatio) ?? null,
+        expenseRatioCategory: raw(fp.feesExpensesInvestmentCat?.annualReportExpenseRatio) ?? null,
+        totalAssets: raw(sd.totalAssets) ?? raw(ks.totalAssets) ?? null, yield: raw(sd.yield) ?? null, inception: raw(ks.fundInceptionDate) ?? null,
+        holdings: (th.holdings || []).map((h) => ({ symbol: h.symbol || null, name: h.holdingName || h.symbol, weight: raw(h.holdingPercent) })).filter((h) => h.weight != null),
+        sectors, stock: raw(th.stockPosition), bond: raw(th.bondPosition), cash: raw(th.cashPosition),
+      };
+    });
+  }
+
   // Earnings history and estimates, ownership, insider trades and key statistics.
   async function details(symbol) {
     return cached(`details:${symbol}`, 60 * 60e3, async () => {
@@ -343,7 +367,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { chart, quotes, news, search, profile, options, statements, details, events, filings, normalizeChart, normalizeQuote };
+  return { chart, quotes, news, search, profile, options, statements, details, events, filings, etf, normalizeChart, normalizeQuote };
 }
 
 export async function pool(items, size, fn) {

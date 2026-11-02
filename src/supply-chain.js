@@ -270,7 +270,37 @@ export const LINKS = [
   ['PEP', 'YUM', 'Drinks for Taco Bell, KFC and Pizza Hut', 'disclosed'],
   ['CELH', 'PEP', 'Energy drinks it distributes (most of Celsius sales)', 'disclosed'],
   ['MNST', 'KO', "Energy drinks distributed through Coca-Cola's bottlers", 'disclosed'],
+  // ---- oil and gas: service contracts and long-term LNG (liquefied gas) deals
+  ['LNG', 'SHEL', 'LNG under long-term supply contracts', 'disclosed'],
+  ['LNG', 'TTE', 'LNG under long-term supply contracts', 'disclosed'],
+  ['LNG', 'EQNR', 'LNG under a long-term supply contract', 'disclosed'],
+  ['VG', 'SHEL', 'LNG under a long-term contract (the subject of an arbitration)', 'disclosed'],
+  ['VG', 'BP', 'LNG under a long-term contract (the subject of an arbitration)', 'disclosed'],
+  ['BKR', 'VG', 'Gas liquefaction equipment for its LNG plants', 'disclosed'],
+  ['SRE', 'COP', 'LNG from Port Arthur LNG (long-term purchase contract)', 'disclosed'],
+  ['HAL', 'XOM', 'Drilling and well services', 'reported'],
+  ['HAL', 'CVX', 'Drilling and well services', 'reported'],
+  ['SLB', 'COP', 'Oilfield services and equipment', 'reported'],
+  ['OXY', 'MSFT', 'Carbon-removal credits (1PointFive direct air capture)', 'disclosed'],
+
+  // ---- banks and cards: who issues which card, on which network
+  ['JPM', 'AMZN', 'Issues the Amazon Prime Visa card', 'disclosed'],
+  ['JPM', 'UAL', 'Issues the United co-brand credit cards', 'disclosed'],
+  ['JPM', 'MAR', 'Issues Marriott Bonvoy credit cards', 'disclosed'],
+  ['AXP', 'MAR', 'Issues Marriott Bonvoy credit cards', 'disclosed'],
+  ['AXP', 'HLT', 'Issues Hilton Honors credit cards', 'disclosed'],
+  ['C', 'AAL', 'Issues the AAdvantage credit cards (sole issuer from 2026)', 'disclosed'],
+  ['MA', 'C', 'Card network for Citi cards incl. AAdvantage', 'reported'],
+  ['V', 'JPM', 'Card network for most Chase cards', 'reported'],
+  ['SYF', 'AMZN', 'Amazon store credit cards', 'disclosed'],
+  ['SYF', 'LOW', "Lowe's store credit cards", 'disclosed'],
+  ['SYF', 'PYPL', 'PayPal Credit', 'disclosed'],
+
+  // ---- index licences for funds
+  ['MSCI', 'BLK', 'Index licences for iShares ETFs (its largest client)', 'disclosed'],
+  ['SPGI', 'BLK', 'S&P index licences for iShares ETFs', 'reported'],
 ];
+
 
 
 

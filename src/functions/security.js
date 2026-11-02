@@ -49,14 +49,14 @@ register({
       if (s.cls === 'EQ') {
         const cap = s.shares * s.last;
         facts.push(kv('Market cap', `${big(cap)} ${s.ccy}`), kv('Shares out', big(s.shares)), kv('P/E (ttm)', num(s.last / s.eps, 1)), kv('EPS (ttm)', num(s.eps, 2)),
-          kv('Dividend yield', `${num(s.divYield, 2)}%`), kv('Beta vs US 500', num(s.histBeta, 2)), kv('Sector', esc(s.sector)), kv('Region', s.region),
+          kv('Dividend yield', `${num(s.divYield, 2)}%`), `<div class="kv" title="Calculated by Meridian from the past year of daily returns against the S&P 500. Yahoo's figure in KEYS uses 5 years of monthly returns, so the two differ."><span>Beta · 1Y daily vs S&amp;P 500</span><b>${num(s.histBeta, 2)}</b></div>`, kv('Sector', esc(s.sector)), kv('Region', s.region),
           kv('Next earnings', s.earnings?.date ? `${s.earnings.date} ${s.earnings.when}` : '—'), kv('Avg daily vol', big(s.adv)));
       } else if (s.cls === 'BOND') {
         facts.push(kv('Country', s.country), kv('Tenor', s.tenor), kv('Yield', `${num(s.last, 3)}%`), kv('Change', signed(s.chgBp, 1, 'bp'), dir(s.chg)), kv('Currency', s.ccy));
       } else {
         facts.push(kv('Asset class', CLS_NAME[s.cls]), kv('Currency', s.ccy), kv('Realized vol (1Y)', pct(s.realVol, 1)));
         if (s.unit) facts.push(kv('Unit', s.unit));
-        if (s.histBeta != null) facts.push(kv('Beta vs US 500', num(s.histBeta, 2)));
+        if (s.histBeta != null) facts.push(kv('Beta · 1Y daily vs S&amp;P 500', num(s.histBeta, 2)));
       }
       const r1 = [['1W', 5], ['1M', 21], ['3M', 63], ['6M', 126], ['1Y', 259]];
       body.innerHTML = `
@@ -270,7 +270,7 @@ register({
       { label: 'Margin', value: (i) => pct(i.margin, 1).replace('+', ''), cls: 'r' },
       { label: '3M', value: (i) => pct(ret(i, 63), 1), cls: 'r', cellCls: (i) => dir(ret(i, 63)) },
       { label: '1Y', value: (i) => pct(ret(i, 259), 1), cls: 'r', cellCls: (i) => dir(ret(i, 259)) },
-      { label: 'Beta', value: (i) => num(i.histBeta, 2), cls: 'r dim' },
+      { label: 'Beta 1Y', title: '1 year of daily returns vs the S&P 500 (Meridian)', value: (i) => num(i.histBeta, 2), cls: 'r dim' },
     ], { onRow: (k) => ctx.app.load(k) });
     const update = () => t.set(peers.map((i) => Object.assign(i, { key: i.sym, rowCls: i === s ? 'self' : '' })));
     update();

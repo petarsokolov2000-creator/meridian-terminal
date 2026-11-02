@@ -72,17 +72,19 @@ live('ANLY', (ctx) => {
     const total = buy + t.hold + sell;
     const w = (x) => (total ? (x / total) * 100 : 0);
     // Yahoo's mean runs 1 (strong buy) to 5 (strong sell).
+    const tgt = (v) => (v > 0 ? num(v, 2) : '<span class="dim">n/a</span>');
+    const mean = p.targetMean > 0 ? p.targetMean : null;
     const label = p.recKey ? p.recKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—';
     ctx.el.innerHTML = `<div class="anr">
       <div class="anr-head"><div><span class="dim">Consensus</span><b class="big">${esc(label)}</b><span class="dim">${p.recMean ? `${num(p.recMean, 2)} (1 = strong buy, 5 = strong sell)` : ''} · ${p.analysts ?? total} analysts</span></div>
-        <div><span class="dim">12M target (mean)</span><b class="big ${dir((p.targetMean ?? s.last) - s.last)}">${num(p.targetMean, 2)}</b><span class="${dir((p.targetMean ?? s.last) - s.last)}">${p.targetMean ? `${pct(p.targetMean / s.last - 1, 1)} vs last` : ''}</span></div>
-        <div><span class="dim">Range</span><b>${num(p.targetLow, 2)} – ${num(p.targetHigh, 2)}</b></div></div>
+        <div><span class="dim">12M target (mean)</span><b class="big ${dir((mean ?? s.last) - s.last)}">${tgt(mean)}</b><span class="${dir((mean ?? s.last) - s.last)}">${mean ? `${pct(mean / s.last - 1, 1)} vs last` : ''}</span></div>
+        <div><span class="dim">Range</span><b>${tgt(p.targetLow)} – ${tgt(p.targetHigh)}</b></div></div>
       ${total ? `<div class="stack"><span class="up-bg" style="width:${w(buy)}%">Buy ${buy}</span><span class="mid-bg" style="width:${w(t.hold)}%">Hold ${t.hold}</span><span class="down-bg" style="width:${w(sell)}%">Sell ${sell}</span></div>` : ''}
       <h3 class="dim" style="font-size:11px;margin:8px 0 4px">RECENT RATING CHANGES</h3>
       ${p.actions.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Firm</th><th class="l">Action</th><th class="l">Rating</th><th class="r">Target</th></tr></thead><tbody>
-      ${p.actions.map((a) => `<tr><td class="l dim">${new Date(a.t).toISOString().slice(0, 10)}</td><td class="l">${esc(a.firm)}</td><td class="l ${a.action === 'up' ? 'up' : a.action === 'down' ? 'down' : ''}">${esc(a.action || '')}</td><td class="l">${esc(a.from ? `${a.from} → ${a.to}` : a.to)}</td><td class="r">${num(a.target, 2)}</td></tr>`).join('')}
+      ${p.actions.map((a) => `<tr><td class="l dim">${new Date(a.t).toISOString().slice(0, 10)}</td><td class="l">${esc(a.firm)}</td><td class="l ${a.action === 'up' ? 'up' : a.action === 'down' ? 'down' : ''}">${esc(a.action || '')}</td><td class="l">${esc(a.from ? `${a.from} → ${a.to}` : a.to)}</td><td class="r" ${a.target > 0 ? '' : 'title="This firm published no price target with this rating change"'}>${tgt(a.target)}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="note">No recent rating changes reported.</p>'}
-      <p class="note">Source: Yahoo Finance.</p></div>`;
+      <p class="note">Source: Yahoo Finance (financialData, recommendationTrend, upgradeDowngradeHistory), as of ${new Date().toISOString().slice(0, 10)}. Targets are 12-month analyst price targets; "n/a" means the firm gave no target with that rating change (Yahoo reports those as 0).</p></div>`;
   });
 });
 

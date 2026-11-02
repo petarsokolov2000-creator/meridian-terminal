@@ -80,6 +80,22 @@ function install() {
       fetchImpl: nativeFetch,
       keyStore,
       historyStore,
+      kvStore: {
+        get: (k) => {
+          try {
+            return JSON.parse(localStorage.getItem(`meridian:kv:${k}`));
+          } catch {
+            return null;
+          }
+        },
+        set: (k, v) => {
+          try {
+            localStorage.setItem(`meridian:kv:${k}`, JSON.stringify(v));
+          } catch {
+            // storage full: it's only a cache
+          }
+        },
+      },
       currentVersion: async () => (await (await pageFetch('/VERSION', { cache: 'no-store' })).text()).trim(),
       universe: liveSymbols(),
     });

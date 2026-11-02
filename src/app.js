@@ -12,6 +12,7 @@ import './functions/live-fns.js';
 import './functions/fundamentals.js';
 import './functions/backtest.js';
 import './functions/supply.js';
+import './functions/valuation.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },

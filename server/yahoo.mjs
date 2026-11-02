@@ -221,7 +221,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
   const STATEMENTS = {
     income: ['TotalRevenue', 'CostOfRevenue', 'GrossProfit', 'ResearchAndDevelopment', 'SellingGeneralAndAdministration', 'OperatingIncome', 'InterestExpense', 'PretaxIncome', 'TaxProvision', 'NetIncome', 'EBITDA', 'DilutedEPS', 'DilutedAverageShares'],
     balance: ['CashAndCashEquivalents', 'CurrentAssets', 'TotalAssets', 'CurrentLiabilities', 'TotalDebt', 'NetDebt', 'TotalLiabilitiesNetMinorityInterest', 'StockholdersEquity', 'RetainedEarnings', 'WorkingCapital', 'OrdinarySharesNumber'],
-    cashflow: ['OperatingCashFlow', 'CapitalExpenditure', 'FreeCashFlow', 'StockBasedCompensation', 'InvestingCashFlow', 'RepurchaseOfCapitalStock', 'CashDividendsPaid', 'FinancingCashFlow'],
+    cashflow: ['OperatingCashFlow', 'CapitalExpenditure', 'FreeCashFlow', 'DepreciationAndAmortization', 'StockBasedCompensation', 'InvestingCashFlow', 'RepurchaseOfCapitalStock', 'CashDividendsPaid', 'FinancingCashFlow'],
   };
 
   // { periods: ['2022-09-30', ...] (oldest first), rows: { TotalRevenue: { '2022-09-30': 3.9e11 } } }
@@ -240,6 +240,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       }
       const rows = {};
       const periods = new Set();
+      let currency = null;
       for (const r of data?.timeseries?.result || []) {
         const type = r?.meta?.type?.[0];
         // the values sit under a key named after the type (fall back to any other array)
@@ -249,12 +250,13 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         for (const it of items) {
           const v = raw(it?.reportedValue);
           if (!it?.asOfDate || v == null) continue;
+          if (!currency && it.currencyCode && name !== 'DilutedAverageShares' && name !== 'OrdinarySharesNumber') currency = it.currencyCode;
           (rows[name] ||= {})[it.asOfDate] = v;
           periods.add(it.asOfDate);
         }
       }
       if (!periods.size) throw new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404);
-      return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency: null, layout: STATEMENTS };
+      return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency, layout: STATEMENTS };
     });
   }
 

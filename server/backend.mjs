@@ -13,6 +13,8 @@ import { createFred } from './fred.mjs';
 import { createRates } from './rates.mjs';
 import { createSec } from './sec.mjs';
 import { MORE_COMPANIES } from '../src/companies.js';
+import { LIVE_EQUITIES } from '../src/live-universe.js';
+import { createFundamentals } from './fundamentals.mjs';
 
 export const KEYS = {
   finnhub: { label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
@@ -36,13 +38,20 @@ const needSym = (q) => {
 // Any well-formed Yahoo symbol: the built-in list plus whatever tickers the user added.
 const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) => oneSym(s)).slice(0, 320);
 
-export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket, keyStore, historyStore, currentVersion, universe, mock = false, log = console.warn }) {
+export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket, keyStore, historyStore, kvStore = null, currentVersion, universe, mock = false, log = console.warn }) {
   const opts = { fetchImpl };
   const yahoo = createYahoo(opts);
   const finnhub = createFinnhub({ getKey: () => keyStore.get('finnhub'), ...opts, WebSocketImpl });
   const fred = createFred({ getKey: () => keyStore.get('fred'), ...opts });
   const rates = createRates(opts);
   const sec = createSec(opts);
+  const fundamentals = createFundamentals({ sec, yahoo, kvStore, log });
+  // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
+  const SECTOR_OF = new Map([...LIVE_EQUITIES.map((e) => [e[0], e[2]]), ...MORE_COMPANIES.map((c) => [c[0], c[2]])]);
+  const peerCandidates = (sym) => {
+    const sector = SECTOR_OF.get(sym);
+    return [...SECTOR_OF].filter(([s, sec2]) => s !== sym && (!sector || sec2 === sector)).map(([s]) => s);
+  };
   const providers = { finnhub: { check: () => finnhub.check(), restart: () => finnhub.restart() }, fred: { check: () => fred.check(), restart: () => fred.reset() } };
   const UNIVERSE = new Set(universe);
 
@@ -196,6 +205,11 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     // Quotes for the 1,000+ extra companies (src/companies.js), for the screener: one Yahoo
     // request per 50 companies, at most once a minute, and only the fields the screener uses.
     '/api/more-quotes': async () => moreQuotes(),
+    // valuation and fundamentals (VAL, DCF): SEC 10-K figures, Yahoo prices
+    '/api/annual': async (q) => fundamentals.annual(needSym(q), 'full'),
+    '/api/valuation': async (q) => fundamentals.valuation(needSym(q)),
+    '/api/peers': async (q) => fundamentals.peers(needSym(q), peerCandidates(needSym(q)), 6),
+    '/api/peer-row': async (q) => fundamentals.peerRow(needSym(q)),
     '/api/options': async (q) => yahoo.options(needSym(q), Number(q.get('date')) || null),
   };
 

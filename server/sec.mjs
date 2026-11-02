@@ -18,7 +18,16 @@ export function createSec({ fetchImpl = fetch } = {}) {
     cache.set(key, { at: Date.now(), p });
     return p;
   };
+  // The SEC allows at most 10 requests a second per client: space them out.
+  let nextSlot = 0;
+  const throttle = async () => {
+    const now = Date.now();
+    const wait = Math.max(0, nextSlot - now);
+    nextSlot = Math.max(now, nextSlot) + 125;
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+  };
   async function json(url) {
+    await throttle();
     const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
     if (res.status === 403 || res.status === 429) {
       throw Object.assign(new Error(`the SEC refused the request (${res.status}); it limits automated access, so try again in a few minutes`), { status: 503 });
@@ -61,5 +70,30 @@ export function createSec({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { filings };
+  // ---- for the valuation functions ----------------------------------------------------------
+
+  async function cikOf(symbol) {
+    const t = String(symbol).toUpperCase();
+    const map = await tickers();
+    return map.get(t) || map.get(t.replace('.', '-')) || null;
+  }
+
+  // The company's official industry code (SIC), name and fiscal year end, from its EDGAR profile.
+  const profile = (cik) => cached(`profile:${cik}`, 7 * 24 * 60 * 60e3, async () => {
+    const d = await json(`https://data.sec.gov/submissions/CIK${String(cik).padStart(10, '0')}.json`);
+    return { cik, name: d?.name || null, sic: d?.sic ? Number(d.sic) : null, sicDescription: d?.sicDescription || null, fiscalYearEnd: d?.fiscalYearEnd || null };
+  });
+
+  // Every value the company ever reported for one XBRL tag (e.g. us-gaap/Revenues), with the
+  // period, the form and the date it was filed. A tag the company never used answers 404 -> null.
+  const concept = (cik, tag, taxonomy = 'us-gaap') => cached(`concept:${cik}:${taxonomy}:${tag}`, 12 * 60 * 60e3, async () => {
+    try {
+      return await json(`https://data.sec.gov/api/xbrl/companyconcept/CIK${String(cik).padStart(10, '0')}/${taxonomy}/${tag}.json`);
+    } catch (err) {
+      if (err.status === 404) return null;
+      throw err;
+    }
+  });
+
+  return { filings, cikOf, profile, concept };
 }

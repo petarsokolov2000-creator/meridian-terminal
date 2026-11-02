@@ -589,6 +589,19 @@ export class LiveEngine {
   filings(sym) {
     return api(`/api/filings?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
+  // VAL / DCF: SEC 10-K history (Yahoo for non-SEC filers) and prices; peers by SEC industry code
+  annual(sym) {
+    return api(`/api/annual?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  valuation(sym) {
+    return api(`/api/valuation?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  peers(sym) {
+    return api(`/api/peers?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
+  peerRow(ysym) {
+    return api(`/api/peer-row?symbol=${encodeURIComponent(ysym)}`);
+  }
 
   options(sym, date) {
     const inst = this.get(sym);

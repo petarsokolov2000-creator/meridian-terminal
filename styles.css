@@ -342,3 +342,16 @@ a.doc:hover { text-decoration: underline; }
   .supp-what { min-width: 0; }
   .supp-lists th:last-child, .supp-lists td:last-child { display: none; }
 }
+
+/* VAL and DCF */
+.val-chart { height: 180px; }
+.val-formulas, .val-peers { padding: 4px 8px; }
+.val-formulas h3, .val-peers h3, .bt-trades h3, .tbl-wrap > h3 { font-size: 11px; color: var(--dim); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; margin: 8px 0 4px; }
+.val-formula { white-space: normal; line-height: 1.5; }
+.val-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 0; }
+.val-add input { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 3px 6px; font: inherit; width: 150px; }
+.dcf-form { padding: 4px 8px; }
+.dcf-form input { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 2px 4px; font: inherit; text-align: right; }
+.dcf-form td.small { white-space: normal; min-width: 220px; }
+.dcf-sens td, .dcf-sens th { min-width: 60px; }
+@media (max-width: 900px) { .dcf-form td.small { min-width: 160px; } }

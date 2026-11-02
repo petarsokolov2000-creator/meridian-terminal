@@ -73,6 +73,16 @@ const backend = createBackend({
       await writeFile(path.join(CACHE_DIR, `history-${day}.json`), JSON.stringify(data));
     },
   },
+  // small values kept between runs (e.g. SEC industry codes), in .cache/kv.json
+  kvStore: {
+    get: async (k) => JSON.parse(await readFile(path.join(CACHE_DIR, 'kv.json'), 'utf8').catch(() => '{}'))[k] ?? null,
+    set: async (k, v) => {
+      const all = JSON.parse(await readFile(path.join(CACHE_DIR, 'kv.json'), 'utf8').catch(() => '{}'));
+      all[k] = v;
+      await mkdir(CACHE_DIR, { recursive: true });
+      await writeFile(path.join(CACHE_DIR, 'kv.json'), JSON.stringify(all));
+    },
+  },
   currentVersion: async () => (await readFile(path.join(ROOT, 'VERSION'), 'utf8')).trim(),
   universe: liveSymbols(),
   mock: !!mock,

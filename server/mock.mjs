@@ -50,7 +50,8 @@ function chart(s, range, interval) {
   const now = Math.floor(Date.now() / 1000);
   const daily = interval === '1d' || interval === '1wk';
   const n = !daily ? 120 : { '2y': 504, '5y': 1260, max: 700 }[range] || 252;
-  const d = series(s, n, daily ? 86400 : 60, now, daily ? 0.03 : 0.003);
+  // weekly bars really are a week apart, so 'max' reaches back about 13 years
+  const d = series(s, n, interval === '1wk' ? 7 * 86400 : daily ? 86400 : 60, now, daily ? 0.03 : 0.003);
   const last = d.c[d.c.length - 1];
   const events = interval === '1mo' ? { events: {
     dividends: Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((k) => { const t = now - k * 91 * 86400; return [t, { amount: 0.26 - k * 0.005, date: t }]; })),
@@ -153,12 +154,111 @@ function timeseries(u) {
   return { timeseries: { result, error: null } };
 }
 
-function sec(u) {
+// ---- SEC XBRL test data ----------------------------------------------------------------------
+// AAPL: Apple's published 10-K figures (USD millions; shares in millions), fiscal 2015-2024. FY2015-
+// 2017 appear only in their original pre-split filings (EPS before the 2020 4-for-1 split), so the
+// split adjustment is exercised; FY2018-2019 are also restated in the FY2020 10-K, as Apple did.
+// XOM and JPM: their published 2023 and 2024 figures. Everything else: generated numbers.
+const APPLE_ENDS = ['2015-09-26', '2016-09-24', '2017-09-30', '2018-09-29', '2019-09-28', '2020-09-26', '2021-09-25', '2022-09-24', '2023-09-30', '2024-09-28'];
+const REAL = {
+  AAPL: { cik: 320193, sic: 3571, sicDescription: 'ELECTRONIC COMPUTERS', fye: '0928', ends: APPLE_ENDS,
+    d: {
+      SalesRevenueNet: [233715, 215639, 229234, 265595, null, null, null, null, null, null],
+      RevenueFromContractWithCustomerExcludingAssessedTax: [null, null, null, 265595, 260174, 274515, 365817, 394328, 383285, 391035],
+      OperatingIncomeLoss: [71230, 60024, 61344, 70898, 63930, 66288, 108949, 119437, 114301, 123216],
+      NetIncomeLoss: [53394, 45687, 48351, 59531, 55256, 57411, 94680, 99803, 96995, 93736],
+      DepreciationDepletionAndAmortization: [11257, 10505, 10157, 10903, 12547, 11056, 11284, 11104, 11519, 11445],
+      NetCashProvidedByUsedInOperatingActivities: [81266, 65824, 64225, 77434, 69391, 80674, 104038, 122151, 110543, 118254],
+      PaymentsToAcquirePropertyPlantAndEquipment: [11247, 12734, 12451, 13313, 10495, 7309, 11085, 10708, 10959, 9447],
+      EarningsPerShareDiluted: [9.22, 8.31, 9.21, 11.91, 11.89, 3.28, 5.61, 6.11, 6.13, 6.08],
+      WeightedAverageNumberOfDilutedSharesOutstanding: [5793.069, 5500.281, 5251.692, 5000.109, 4648.913, 17528.214, 16864.919, 16325.819, 15812.547, 15408.095],
+    },
+    i: {
+      CashAndCashEquivalentsAtCarryingValue: [null, null, null, 25913, 48844, 38016, 34940, 23646, 29965, 29943],
+      MarketableSecuritiesCurrent: [null, null, null, 40388, 51713, 52927, 27699, 24658, 31590, 35228],
+      LongTermDebtNoncurrent: [null, null, null, 93735, 91807, 98667, 109106, 98959, 95281, 85750],
+      LongTermDebtCurrent: [null, null, null, 8784, 10260, 8773, 9613, 11128, 9822, 10912],
+      CommercialPaper: [null, null, null, 11964, 5980, 4996, 6000, 9982, 5985, 9967],
+      StockholdersEquity: [null, null, null, 107147, 90488, 65339, 63090, 50672, 62146, 56950],
+      CommonStockSharesOutstanding: [null, null, null, 4754.986, 4443.236, 16976.763, 16426.786, 15943.425, 15550.061, 15116.786],
+    },
+    // FY2018-2019 restated (split-adjusted) in the FY2020 10-K
+    restated: { EarningsPerShareDiluted: { 3: 2.98, 4: 2.97 }, WeightedAverageNumberOfDilutedSharesOutstanding: { 3: 20000.436, 4: 18595.651 } },
+  },
+  XOM: { cik: 34088, sic: 2911, sicDescription: 'PETROLEUM REFINING', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
+    d: { Revenues: [344582, 349585], NetIncomeLoss: [36010, 33680], DepreciationDepletionAndAmortization: [20641, 23442], NetCashProvidedByUsedInOperatingActivities: [55369, 55022],
+      PaymentsToAcquirePropertyPlantAndEquipment: [21919, 24306], EarningsPerShareDiluted: [8.89, 7.84], WeightedAverageNumberOfDilutedSharesOutstanding: [4052, 4299] },
+    i: { CashAndCashEquivalentsAtCarryingValue: [31539, 23029], LongTermDebtNoncurrent: [37483, 36755], ShortTermBorrowings: [4090, 4955], StockholdersEquity: [204802, 263705], CommonStockSharesOutstanding: [3973, 4343] },
+  },
+  JPM: { cik: 19617, sic: 6021, sicDescription: 'NATIONAL COMMERCIAL BANKS', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
+    d: { RevenuesNetOfInterestExpense: [158104, 177556], NetIncomeLoss: [49552, 58471], EarningsPerShareDiluted: [16.23, 19.75], CommonStockDividendsPerShareDeclared: [4.10, 4.80], WeightedAverageNumberOfDilutedSharesOutstanding: [2943, 2897] },
+    i: { StockholdersEquity: [327878, 344758], PreferredStockValue: [27404, 20050], Goodwill: [52634, 52565], CommonStockSharesOutstanding: [2875, 2797] },
+  },
+};
+const MOCK_SIC = { DELL: 3571, HPQ: 3571, SMCI: 3571, HPE: 3571, CVX: 2911, COP: 2911, PSX: 2911, MPC: 2911, VLO: 2911, BAC: 6021, WFC: 6021, C: 6021, USB: 6021, PNC: 6021, MSFT: 7372, ORCL: 7372 };
+const PER_SHARE = /PerShare/;
+const SHARES = /Shares/;
+let tickerList = null;
+async function mockTickers() {
+  if (tickerList) return tickerList;
+  const u = await import('../src/live-universe.js');
+  const m = await import('../src/companies.js');
+  const syms = [...u.LIVE_EQUITIES.map((e) => e[0]), ...m.MORE_COMPANIES.map((c) => c[0])];
+  tickerList = syms.map((t, k) => ({ cik_str: REAL[t]?.cik ?? 1000000 + k, ticker: t, title: `${t} Mock Corp` }));
+  return tickerList;
+}
+function secConcept(cik, tag) {
+  const real = Object.entries(REAL).find(([, r]) => r.cik === cik);
+  const isDur = !/^(Cash|Marketable|LongTermDebt|Commercial|ShortTerm|Stockholders|Preferred|Goodwill|CommonStockShares|Intangible)/.test(tag);
+  const unit = PER_SHARE.test(tag) ? 'USD/shares' : SHARES.test(tag) && !/^Payments/.test(tag) ? 'shares' : 'USD';
+  const scale = unit === 'USD/shares' ? 1 : 1e6;
+  const rows = [];
+  const push = (start, end, val, filed) => rows.push({ ...(start ? { start } : {}), end, val: Math.round(val * scale * 100) / 100, form: '10-K', fy: Number(filed.slice(0, 4)), fp: 'FY', filed });
+  if (real) {
+    const [, r] = real;
+    const vals = (isDur ? r.d : r.i)[tag];
+    if (!vals) return null;
+    r.ends.forEach((end, k) => {
+      if (vals[k] == null) return;
+      const start = isDur ? new Date(Date.parse(end) - 364 * 86400e3).toISOString().slice(0, 10) : null;
+      const filed = new Date(Date.parse(end) + 35 * 86400e3).toISOString().slice(0, 10);
+      push(start, end, vals[k], filed);
+      const re = r.restated?.[tag]?.[k];
+      if (re != null) push(start, end, re, '2020-10-30');
+    });
+    return rows.length ? { cik, taxonomy: 'us-gaap', tag, units: { [unit]: rows } } : null;
+  }
+  // generated: 12 fiscal years ending 31 Dec, steady growth with noise
+  const r = rng(seedOf(`${cik}${tag}`));
+  const want = { RevenueFromContractWithCustomerExcludingAssessedTax: 40000, OperatingIncomeLoss: 8000, NetIncomeLoss: 6000, DepreciationDepletionAndAmortization: 1500, NetCashProvidedByUsedInOperatingActivities: 9000,
+    PaymentsToAcquirePropertyPlantAndEquipment: 2000, EarningsPerShareDiluted: 4, WeightedAverageNumberOfDilutedSharesOutstanding: 1500, CashAndCashEquivalentsAtCarryingValue: 5000, LongTermDebt: 12000,
+    StockholdersEquity: 20000, CommonStockSharesOutstanding: 1480, InterestExpense: 400, IncomeTaxExpenseBenefit: 1300, ShareBasedCompensation: 600, PaymentsForRepurchaseOfCommonStock: 2500, PaymentsOfDividends: 1500 }[tag];
+  if (!want) return null;
+  for (let k = 0; k < 12; k++) {
+    const yr = 2014 + k;
+    const g = tag.startsWith('Weighted') || tag.startsWith('CommonStockShares') ? 1 - 0.01 * k : (1 + 0.07) ** k;
+    push(isDur ? `${yr}-01-01` : null, `${yr}-12-31`, want * g * (0.9 + r() * 0.2), `${yr + 1}-02-15`);
+  }
+  return { cik, taxonomy: 'us-gaap', tag, units: { [unit]: rows } };
+}
+
+async function sec(u) {
   // MERIDIAN_MOCK_SEC=403 imitates the SEC refusing automated requests
   if (process.env.MERIDIAN_MOCK_SEC) return new Response('Forbidden', { status: Number(process.env.MERIDIAN_MOCK_SEC) });
-  if (u.pathname === '/files/company_tickers.json') return ok({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' }, 1: { cik_str: 1067983, ticker: 'BRK-B', title: 'BERKSHIRE HATHAWAY INC' } });
+  let m;
+  if ((m = u.pathname.match(/^\/api\/xbrl\/companyconcept\/CIK(\d{10})\/us-gaap\/(\w+)\.json$/))) {
+    const j = secConcept(Number(m[1]), m[2]);
+    return j ? ok(j) : new Response('{}', { status: 404 });
+  }
+  if (u.pathname === '/files/company_tickers.json') return ok(Object.fromEntries((await mockTickers()).map((t, k) => [k, t])));
+  if ((m = u.pathname.match(/^\/submissions\/CIK(\d{10})\.json$/)) && m[1] !== '0000320193') {
+    const cik = Number(m[1]);
+    const t = (await mockTickers()).find((x) => x.cik_str === cik);
+    const real = t && REAL[t.ticker];
+    return ok({ name: t ? `${t.ticker} Mock Corp` : 'Unknown', sic: String(real?.sic ?? MOCK_SIC[t?.ticker] ?? 9999), sicDescription: real?.sicDescription ?? 'MOCK INDUSTRY', fiscalYearEnd: real?.fye ?? '1231', filings: { recent: {} } });
+  }
   if (u.pathname === '/submissions/CIK0000320193.json') {
-    return ok({ name: 'Apple Inc.', filings: { recent: {
+    return ok({ name: 'Apple Inc.', sic: '3571', sicDescription: 'ELECTRONIC COMPUTERS', fiscalYearEnd: '0928', filings: { recent: {
       accessionNumber: ['0000320193-26-000105', '0000320193-26-000090', '0001140361-26-038000'], filingDate: ['2026-10-30', '2026-08-01', '2026-07-15'],
       reportDate: ['2026-09-27', '2026-06-28', ''], form: ['10-K', '10-Q', '4'], primaryDocument: ['aapl-20260927.htm', 'aapl-20260628.htm', 'xslF345X05/form4.xml'], primaryDocDescription: ['10-K', '10-Q', 'FORM 4'],
     } } });

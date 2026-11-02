@@ -11,6 +11,7 @@ import { trade, checkAlerts } from './functions/tools.js';
 import './functions/live-fns.js';
 import './functions/fundamentals.js';
 import './functions/backtest.js';
+import './functions/supply.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },

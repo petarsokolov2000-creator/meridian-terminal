@@ -316,3 +316,29 @@ a.doc:hover { text-decoration: underline; }
   .scrn-sector { display: none; }
   .bt .bt-chart { flex-basis: 240px; }
 }
+
+/* SUPP supply chain map */
+.supp-map { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.supp-map svg { width: 100%; height: auto; display: block; max-height: 62vh; font-family: var(--mono), ui-monospace, monospace; }
+.supp-map .t-head { fill: var(--dim); font-size: 10px; letter-spacing: 0.08em; }
+.supp-node { cursor: pointer; }
+.supp-node rect { fill: var(--panel); stroke: var(--line); }
+.supp-node:hover rect, .supp-node:focus rect { stroke: var(--accent); }
+.supp-node:focus { outline: none; }
+.supp-map .t-sym { fill: var(--accent); font-size: 12px; font-weight: 700; }
+.supp-map .t-name { fill: var(--dim); font-size: 11px; }
+.supp-map .t-mov { fill: var(--dim); font-size: 11px; }
+.supp-map .t-mov.up { fill: var(--up); }
+.supp-map .t-mov.down { fill: var(--down); }
+.supp-edge { fill: none; stroke: color-mix(in oklab, var(--accent) 45%, transparent); stroke-width: 1.2; }
+.supp-edge.out { stroke: color-mix(in oklab, var(--up) 45%, transparent); }
+.supp-center rect { fill: color-mix(in oklab, var(--accent) 16%, var(--panel)); stroke: var(--accent); }
+.supp-center .t-csym { fill: var(--text); font-size: 16px; font-weight: 700; }
+.supp-row { cursor: pointer; }
+.supp-what { white-space: normal; min-width: 150px; }
+.supp-lists .pane { min-width: 0; }
+@media (max-width: 900px) {
+  .supp-map svg { max-height: none; }
+  .supp-what { min-width: 0; }
+  .supp-lists th:last-child, .supp-lists td:last-child { display: none; }
+}

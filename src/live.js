@@ -3,6 +3,7 @@
 // fetch Yahoo Finance. Quotes refresh every 15 s; intraday bars, fundamentals and per-ticker
 // news load when a panel asks for them.
 
+import { MORE_COMPANIES } from './companies.js';
 import { LIVE_EQUITIES, LIVE_ETFS, LIVE_INDICES, LIVE_FX, LIVE_COMMODITIES, LIVE_CRYPTO, LIVE_BONDS, CURVE_TENORS, finnhubSymbol } from './live-universe.js';
 import { SESSION_MIN } from './engine.js';
 import { logReturns } from './studies.js';
@@ -639,7 +640,64 @@ export class LiveEngine {
 
   search(q) {
     q = q.toUpperCase();
-    return this.instruments.filter((i) => i.sym.startsWith(q) || i.ysym.toUpperCase().startsWith(q) || (i.name || '').toUpperCase().includes(q)).slice(0, 12);
+    const own = this.instruments.filter((i) => i.sym.startsWith(q) || i.ysym.toUpperCase().startsWith(q) || (i.name || '').toUpperCase().includes(q));
+    // then the 1,000+ extra companies (exact ticker first), opened on demand
+    const more = this.moreList().filter((c) => !this.get(c.sym) && (c.sym.startsWith(q) || c.name.toUpperCase().includes(q)))
+      .sort((a, b) => (b.sym === q) - (a.sym === q));
+    return [...own, ...more].slice(0, 12);
+  }
+
+  // ---- the extra companies (src/companies.js) -----------------------------------------------
+  // Light entries: name, sector and region always; price, change, P/E, market value, yield and
+  // 52-week figures once moreQuotes() has run (the screener asks for them). Opening one looks
+  // it up properly, which turns it into a full instrument.
+
+  moreList() {
+    if (!this.more) {
+      this.more = MORE_COMPANIES.map(([ysym, name, sector, region]) => ({ sym: ysym, ysym, name, sector, region, cls: 'EQ', light: true, last: null, pct: null, chg: null, dp: 2 }));
+      this.moreBySym = new Map(this.more.map((c) => [c.sym, c]));
+    }
+    return this.more;
+  }
+
+  /** The screener's list: the built-in stocks plus the extra companies not yet opened. */
+  screenList() {
+    return [...this.equities, ...this.moreList().filter((c) => !this.get(c.sym))];
+  }
+
+  async moreQuotes() {
+    this.moreList();
+    if (this.moreAt && Date.now() - this.moreAt < 60e3) return this.moreState;
+    if (this.moreLoading) return this.moreLoading;
+    this.moreLoading = (async () => {
+      try {
+        const r = await api('/api/more-quotes');
+        const at = Object.fromEntries(r.fields.map((f, k) => [f, k]));
+        for (const [sym, row] of Object.entries(r.quotes)) {
+          const c = this.moreBySym.get(sym);
+          if (!c) continue;
+          c.last = row[at.price];
+          c.prevClose = row[at.prevClose] ?? c.last;
+          c.chg = c.last - c.prevClose;
+          c.pct = c.prevClose ? c.chg / c.prevClose : null;
+          c.marketCap = row[at.marketCap];
+          c.eps = row[at.eps];
+          c.divYield = row[at.divYield] ?? 0;
+          c.hi52 = row[at.hi52];
+          c.chg52 = row[at.chg52];
+          c.ccy = row[at.currency];
+          c.dp = dpFor(c.last);
+          c.priced = true;
+        }
+        this.moreState = { count: Object.keys(r.quotes).length, total: this.more.length, error: null };
+      } catch (err) {
+        this.moreState = { count: this.more.filter((c) => c.priced).length, total: this.more.length, error: err.message };
+      }
+      this.moreAt = Date.now();
+      this.moreLoading = null;
+      return this.moreState;
+    })();
+    return this.moreLoading;
   }
 
   daily(sym) {

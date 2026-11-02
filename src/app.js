@@ -356,7 +356,13 @@ class App {
   // otherwise into the panel itself.
   load(sym, from = this.panels[this.focused]) {
     const sec = engine.get(sym);
-    if (!sec) return;
+    if (!sec) {
+      // one of the extra companies (or any ticker): look it up first, then open it
+      if (!engine.lookup) return;
+      this.toast(`Opening ${sym}: loading its history from Yahoo Finance…`);
+      engine.lookup(sym).then(() => this.load(sym, from), (err) => this.toast(`Couldn't open ${sym}: ${err.message}`, 'err'));
+      return;
+    }
     const linked = this.panels.filter((p) => p !== from && from.link && p.link === from.link && !p.root.hidden);
     const target = from.def?.sec ? from : linked.find((p) => p.def?.sec);
     if (target) {
@@ -459,7 +465,7 @@ class App {
     const remote = (this.remote?.q === last ? this.remote.items : []).filter((r) => !engine.get(r.symbol)).slice(0, 6);
     const items = [
       ...fns.map((f) => `<li data-v="${f.code}"><span class="code">${f.code}</span><span>${esc(f.name)}</span><span class="kind">FUNC</span></li>`),
-      ...secs.map((s) => `<li data-v="${esc(s.sym)}"><span class="code">${esc(s.sym)}</span><span>${esc(s.name)}</span><span class="kind">${s.cls}</span><span class="${dir(s.chg)} r">${px(s)} ${chgText(s)}</span></li>`),
+      ...secs.map((s) => `<li data-v="${esc(s.sym)}"><span class="code">${esc(s.sym)}</span><span>${esc(s.name)}</span><span class="kind">${s.cls}</span>${s.light && s.last == null ? '<span class="dim r">open</span>' : `<span class="${dir(s.chg)} r">${px(s)} ${chgText(s)}</span>`}</li>`),
       ...remote.map((r) => `<li data-v="${esc(r.symbol)}"><span class="code">${esc(r.symbol)}</span><span>${esc(r.name)}</span><span class="kind">${esc(r.type)}</span><span class="dim r">${esc(r.exchange)} · add</span></li>`),
     ];
     if (engine.searchRemote && last.length >= 2 && this.remote?.q !== last) {

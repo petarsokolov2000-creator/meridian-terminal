@@ -115,7 +115,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
 
   // ---- quotes (batched; falls back to chart metadata when the quote API refuses) -----------
 
-  async function quotes(symbols) {
+  async function quotes(symbols, { fallback = true } = {}) {
     const out = {};
     const chunks = [];
     for (let i = 0; i < symbols.length; i += 50) chunks.push(symbols.slice(i, i + 50));
@@ -129,7 +129,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       }
     }
     const missing = symbols.filter((s) => !out[s]);
-    if (missing.length) {
+    if (missing.length && fallback) {
       // Slower path: one chart call per symbol, a few at a time.
       await pool(missing, 6, async (s) => {
         try {
@@ -153,7 +153,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       high: n(r.regularMarketDayHigh), low: n(r.regularMarketDayLow), volume: n(r.regularMarketVolume), avgVolume: n(r.averageDailyVolume3Month),
       bid: n(r.bid) || null, ask: n(r.ask) || null, bidSize: n(r.bidSize), askSize: n(r.askSize),
       marketCap: n(r.marketCap), shares: n(r.sharesOutstanding), pe: n(r.trailingPE), eps: n(r.epsTrailingTwelveMonths), epsForward: n(r.epsForward),
-      divYield: divY, hi52: n(r.fiftyTwoWeekHigh), lo52: n(r.fiftyTwoWeekLow),
+      divYield: divY, hi52: n(r.fiftyTwoWeekHigh), lo52: n(r.fiftyTwoWeekLow), chg52: n(r.fiftyTwoWeekChangePercent),
       earnings: n(r.earningsTimestamp) ?? n(r.earningsTimestampStart), earningsStart: n(r.earningsTimestampStart), earningsEnd: n(r.earningsTimestampEnd),
       marketState: r.marketState || null, time: n(r.regularMarketTime), source: 'quote',
     };

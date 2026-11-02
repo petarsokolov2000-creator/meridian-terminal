@@ -12,6 +12,7 @@ import { createFinnhub } from './finnhub.mjs';
 import { createFred } from './fred.mjs';
 import { createRates } from './rates.mjs';
 import { createSec } from './sec.mjs';
+import { MORE_COMPANIES } from '../src/companies.js';
 
 export const KEYS = {
   finnhub: { label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
@@ -96,6 +97,22 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     return { current, latest, updateAvailable: !!(current && latest && latest !== current) };
   }
 
+  let moreCache = null;
+  function moreQuotes() {
+    if (moreCache && Date.now() - moreCache.at < 60e3) return moreCache.p;
+    const p = yahoo.quotes(MORE_COMPANIES.map((c) => c[0]), { fallback: false }).then((r) => {
+      const out = {};
+      for (const [s, q] of Object.entries(r.quotes)) {
+        if (q.price == null) continue;
+        out[s] = [q.price, q.prevClose, q.marketCap, q.eps, q.divYield, q.hi52, q.chg52, q.name, q.currency];
+      }
+      return { fields: ['price', 'prevClose', 'marketCap', 'eps', 'divYield', 'hi52', 'chg52', 'name', 'currency'], quotes: out, degraded: r.degraded };
+    });
+    moreCache = { at: Date.now(), p };
+    p.catch(() => (moreCache = null));
+    return p;
+  }
+
   // ---- GET routes ----------------------------------------------------------------------------
 
   const routes = {
@@ -176,6 +193,9 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
         }
       }
     },
+    // Quotes for the 1,000+ extra companies (src/companies.js), for the screener: one Yahoo
+    // request per 50 companies, at most once a minute, and only the fields the screener uses.
+    '/api/more-quotes': async () => moreQuotes(),
     '/api/options': async (q) => yahoo.options(needSym(q), Number(q.get('date')) || null),
   };
 

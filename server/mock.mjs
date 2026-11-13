@@ -135,7 +135,7 @@ function summary(s) {
       result: [{
         secFilings: { filings: [{ date: '2026-10-30', epochDate: 1793318400, type: '10-K', title: 'Annual report', edgarUrl: 'https://finance.yahoo.com/sec-filing/mock/10k' }, { date: '2026-08-01', epochDate: 1785542400, type: '10-Q', title: 'Quarterly report', edgarUrl: 'https://finance.yahoo.com/sec-filing/mock/10q' }] },
         quoteType: { longName: `${s} Mock Corp` },
-        assetProfile: { longBusinessSummary: `${s} Mock Corp makes mock products for testing.`, sector: 'Technology', industry: 'Software', fullTimeEmployees: 12000, country: 'United States', website: 'https://example.com' },
+        assetProfile: { longBusinessSummary: `${s} Mock Corp makes mock products for testing.`, ...(['JPM', 'BAC', 'WFC', 'C', 'USB', 'PNC'].includes(s) ? { sector: 'Financial Services', industry: 'Banks - Diversified' } : { sector: 'Technology', industry: 'Software' }), fullTimeEmployees: 12000, country: 'United States', website: 'https://example.com' },
         financialData: { targetMeanPrice: v(base(s) * 1.1), targetHighPrice: v(base(s) * 1.4), targetLowPrice: v(base(s) * 0.8), recommendationMean: v(2.1), recommendationKey: 'buy', numberOfAnalystOpinions: v(30), totalRevenue: v(3.9e11), revenueGrowth: v(0.06), grossMargins: v(0.46), operatingMargins: v(0.31), ebitdaMargins: v(0.34), profitMargins: v(0.25), ebitda: v(1.3e11), totalDebt: v(1.0e11), totalCash: v(6e10), freeCashflow: v(1.0e11), returnOnEquity: v(1.5), debtToEquity: v(150) },
         recommendationTrend: { trend: [{ period: '0m', strongBuy: 10, buy: 20, hold: 12, sell: 2, strongSell: 1 }] },
         upgradeDowngradeHistory: { history: [{ epochGradeDate: Math.floor(Date.now() / 1000) - 86400 * 3, firm: 'Mock Securities', toGrade: 'Buy', fromGrade: 'Hold', action: 'up', currentPriceTarget: base(s) * 1.2 }, { epochGradeDate: Math.floor(Date.now() / 1000) - 86400 * 9, firm: 'Needham', toGrade: 'Hold', fromGrade: 'Hold', action: 'main', currentPriceTarget: 0 }] },
@@ -155,15 +155,61 @@ function summary(s) {
   };
 }
 
+// Yahoo statements for AAPL, XOM and JPM (USD millions, shares in millions). AAPL FY2021-2024 and
+// the annual XOM/JPM figures follow their 10-Ks, except that Yahoo's XOM "total revenue" is
+// sales and other operating revenue (it leaves out other income), as Yahoo really does: the
+// fallback's 2% check has to catch that. AAPL's total assets exist only here (the SEC test data
+// leaves them out), to exercise an unchecked fill. Trailing and quarterly rows: test values.
+const YH = {
+  AAPL: {
+    annual: { dates: ['2021-09-30', '2022-09-30', '2023-09-30', '2024-09-30'], v: {
+      TotalRevenue: [365817, 394328, 383285, 391035], GrossProfit: [152836, 170782, 169148, 180683], CostOfRevenue: [212981, 223546, 214137, 210352], OperatingIncome: [108949, 119437, 114301, 123216],
+      PretaxIncome: [109207, 119103, 113736, 123485], TaxProvision: [14527, 19300, 16741, 29749], NetIncome: [94680, 99803, 96995, 93736], DilutedEPS: [5.61, 6.11, 6.13, 6.08],
+      DilutedAverageShares: [16864.919, 16325.819, 15812.547, 15408.095], OperatingCashFlow: [104038, 122151, 110543, 118254], CapitalExpenditure: [-11085, -10708, -10959, -9447],
+      DepreciationAndAmortization: [11284, 11104, 11519, 11445], StockBasedCompensation: [7906, 9038, 10833, 11688], RepurchaseOfCapitalStock: [-85971, -89402, -77550, -94949], CashDividendsPaid: [-14467, -14841, -15025, -15234],
+      CashAndCashEquivalents: [34940, 23646, 29965, 29943], OtherShortTermInvestments: [27699, 24658, 31590, 35228], TotalDebt: [124719, 120069, 111088, 106629],
+      StockholdersEquity: [63090, 50672, 62146, 56950], OrdinarySharesNumber: [16426.786, 15943.425, 15550.061, 15116.786], TotalAssets: [351002, 352755, 352583, 364980] } },
+    trailing: { dates: ['2025-06-30'], v: { TotalRevenue: [408625], NetIncome: [99280], DilutedEPS: [6.61], OperatingIncome: [130214], OperatingCashFlow: [108565], CapitalExpenditure: [-12381], DepreciationAndAmortization: [11543] } },
+    quarterly: { dates: ['2025-06-30'], v: { CashAndCashEquivalents: [36269], OtherShortTermInvestments: [19103], TotalDebt: [101698], StockholdersEquity: [65830], OrdinarySharesNumber: [14935.826] } },
+  },
+  XOM: {
+    annual: { dates: ['2022-12-31', '2023-12-31', '2024-12-31'], v: {
+      TotalRevenue: [398675, 334697, 339247], NetIncome: [55740, 36010, 33680], DilutedEPS: [13.26, 8.89, 7.84], DilutedAverageShares: [4205, 4052, 4299], OperatingCashFlow: [76797, 55369, 55022],
+      CapitalExpenditure: [-18407, -21919, -24306], DepreciationAndAmortization: [24040, 20641, 23442], CashAndCashEquivalents: [29640, 31539, 23029], TotalDebt: [41193, 41573, 41710],
+      StockholdersEquity: [195049, 204802, 263705], OrdinarySharesNumber: [4080, 3973, 4343] } },
+  },
+  JPM: {
+    annual: { dates: ['2022-12-31', '2023-12-31', '2024-12-31'], v: {
+      TotalRevenue: [128695, 158104, 177556], NetIncome: [37676, 49552, 58471], DilutedEPS: [12.09, 16.23, 19.75], DilutedAverageShares: [2970, 2943, 2897], OperatingCashFlow: [107119, 12974, -42012],
+      StockholdersEquity: [292332, 327878, 344758], PreferredStock: [27404, 27404, 20050], Goodwill: [51662, 52634, 52565], OrdinarySharesNumber: [2934, 2875, 2797], TotalAssets: [3665743, 3875393, 4002814] } },
+  },
+};
+function realTimeseries(u, types) {
+  const sym = decodeURIComponent(u.pathname.split('/').pop());
+  const freq = (types[0] || '').match(/^(annual|quarterly|trailing)/)?.[1];
+  const set = YH[sym]?.[freq];
+  if (!YH[sym]) return null;
+  const result = types.map((t) => {
+    const name = t.replace(/^(annual|quarterly|trailing)/, '');
+    const vals = set?.v[name];
+    if (!vals) return { meta: { symbol: [sym], type: [t] }, timestamp: [] };
+    const scale = /EPS$/.test(name) ? 1 : 1e6;
+    return { meta: { symbol: [sym], type: [t] }, timestamp: set.dates.map((d) => Date.parse(d) / 1000), [t]: set.dates.map((d, i) => (vals[i] == null ? null : { asOfDate: d, periodType: freq === 'quarterly' ? '3M' : '12M', currencyCode: 'USD', reportedValue: { raw: vals[i] * scale, fmt: 'x' } })) };
+  });
+  return { timeseries: { result, error: null } };
+}
+
 function timeseries(u) {
   const types = (u.searchParams.get('type') || '').split(',').filter(Boolean);
+  const real = realTimeseries(u, types);
+  if (real) return real;
   const quarterly = types[0]?.startsWith('quarterly');
   const dates = quarterly
     ? ['2024-09-30', '2024-12-31', '2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31', '2026-03-31', '2026-06-30', '2026-09-30']
     : ['2021-09-30', '2022-09-30', '2023-09-30', '2024-09-30', '2025-09-30', '2026-09-30'];
   const base = { TotalRevenue: 3.9e11, CostOfRevenue: 2.1e11, GrossProfit: 1.8e11, OperatingIncome: 1.2e11, NetIncome: 9.7e10, DilutedEPS: 6.1, TotalAssets: 3.5e11, StockholdersEquity: 7e10, OperatingCashFlow: 1.1e11, CapitalExpenditure: -1.1e10, FreeCashFlow: 9.9e10 };
   const result = types.map((t) => {
-    const name = t.replace(/^(annual|quarterly)/, '');
+    const name = t.replace(/^(annual|quarterly|trailing)/, '');
     // a type Yahoo has no data for comes back as just a meta block
     if (!(name in base)) return { meta: { symbol: [u.pathname.split('/').pop()], type: [t] }, timestamp: [] };
     const scale = quarterly && name !== 'DilutedEPS' ? 0.25 : 1;
@@ -225,6 +271,17 @@ const REAL = {
     i: { StockholdersEquity: [327878, 344758], PreferredStockValue: [27404, 20050], Goodwill: [52634, 52565], CommonStockSharesOutstanding: [2875, 2797], Assets: [3875393, 4002814] },
   },
 };
+// AAPL 10-Q data for the trailing-12-month tests: nine months to 2025-06-28 and the same nine
+// months a year earlier, and the balance sheet on 2025-06-28. TEST VALUES, close to Apple's
+// but not checked line by line against its 10-Q.
+const AAPL_Q = {
+  cur: ['2024-09-29', '2025-06-28', '2025-08-01'], prior: ['2023-10-01', '2024-06-29'],
+  d: { RevenueFromContractWithCustomerExcludingAssessedTax: [313695, 296105], OperatingIncomeLoss: [100623, 93625], NetIncomeLoss: [84544, 79000], DepreciationDepletionAndAmortization: [8632, 8534],
+    NetCashProvidedByUsedInOperatingActivities: [81754, 91443], PaymentsToAcquirePropertyPlantAndEquipment: [9473, 6539], EarningsPerShareDiluted: [5.64, 5.11],
+    IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest: [101290, 93975], IncomeTaxExpenseBenefit: [16746, 14975] },
+  i: { CashAndCashEquivalentsAtCarryingValue: 36269, MarketableSecuritiesCurrent: 19103, LongTermDebtNoncurrent: 82430, LongTermDebtCurrent: 9345, CommercialPaper: 9923, StockholdersEquity: 65830, CommonStockSharesOutstanding: 14935.826 },
+  dei: [['2024-10-18', 15115.823, '2024-11-01'], ['2025-07-11', 14935.826, '2025-08-01']],
+};
 const MOCK_SIC = { DELL: 3571, HPQ: 3571, SMCI: 3571, HPE: 3571, CVX: 2911, COP: 2911, PSX: 2911, MPC: 2911, VLO: 2911, BAC: 6021, WFC: 6021, C: 6021, USB: 6021, PNC: 6021, MSFT: 7372, ORCL: 7372 };
 const PER_SHARE = /PerShare/;
 const SHARES = /Shares/;
@@ -256,6 +313,15 @@ function secConcept(cik, tag) {
       const re = r.restated?.[tag]?.[k];
       if (re != null) push(start, end, re, '2020-10-30');
     });
+    if (r === REAL.AAPL) {
+      const q = AAPL_Q;
+      const qpush = (start, end, val, filed) => rows.push({ ...(start ? { start } : {}), end, val: Math.round(val * scale * 100) / 100, form: '10-Q', fy: 2025, fp: 'Q3', filed });
+      if (isDur && q.d[tag]) {
+        qpush(q.cur[0], q.cur[1], q.d[tag][0], q.cur[2]);
+        qpush(q.prior[0], q.prior[1], q.d[tag][1], q.cur[2]);
+      }
+      if (!isDur && q.i[tag] != null) qpush(null, q.cur[1], q.i[tag], q.cur[2]);
+    }
     return rows.length ? { cik, taxonomy: 'us-gaap', tag, units: { [unit]: rows } } : null;
   }
   // generated: 12 fiscal years ending 31 Dec, steady growth with noise
@@ -338,6 +404,10 @@ async function sec(u) {
   // MERIDIAN_MOCK_SEC=403 imitates the SEC refusing automated requests
   if (process.env.MERIDIAN_MOCK_SEC) return new Response('Forbidden', { status: Number(process.env.MERIDIAN_MOCK_SEC) });
   let m;
+  if ((m = u.pathname.match(/^\/api\/xbrl\/companyconcept\/CIK(\d{10})\/dei\/EntityCommonStockSharesOutstanding\.json$/))) {
+    if (Number(m[1]) !== REAL.AAPL.cik) return new Response('{}', { status: 404 });
+    return ok({ cik: REAL.AAPL.cik, taxonomy: 'dei', tag: 'EntityCommonStockSharesOutstanding', units: { shares: AAPL_Q.dei.map(([end, v, filed], k) => ({ end, val: v * 1e6, accn: `0000320193-2${k}-000001`, form: k ? '10-Q' : '10-K', filed })) } });
+  }
   if ((m = u.pathname.match(/^\/api\/xbrl\/companyconcept\/CIK(\d{10})\/us-gaap\/(\w+)\.json$/))) {
     const j = secConcept(Number(m[1]), m[2]);
     return j ? ok(j) : new Response('{}', { status: 404 });
@@ -446,8 +516,26 @@ function finnhub(u) {
       { date: today, epsActual: null, epsEstimate: 0.5, hour: 'amc', quarter: 3, revenueActual: null, revenueEstimate: 1e9, symbol: 'ZZZZ', year: 2026 },
     ] });
   }
+  if (p === '/stock/financials-reported') return ok({ symbol: u.searchParams.get('symbol'), data: u.searchParams.get('symbol') === 'AAPL' && u.searchParams.get('freq') === 'annual' ? finnhubAapl() : [] });
   if (p === '/calendar/economic') return new Response('{"error":"You don\'t have access to this resource."}', { status: 403 });
   return new Response('not found', { status: 404 });
+}
+
+// Finnhub "as reported" 10-Ks for AAPL: the same figures as the SEC test data (as originally
+// filed, before the 2020 split), plus Apple's published FY2015-2017 balance sheets, which the SEC
+// test data leaves out, so the fallback has old gaps to fill and FY2018 to cross-check against.
+const AAPL_OLD_BS = { CashAndCashEquivalentsAtCarryingValue: [21120, 20484, 20289], MarketableSecuritiesCurrent: [20481, 46671, 53892], LongTermDebtNoncurrent: [53463, 75427, 97207],
+  LongTermDebtCurrent: [2500, 3500, 6496], CommercialPaper: [8499, 8105, 11977], StockholdersEquity: [119355, 128249, 134047], CommonStockSharesOutstanding: [5578.753, 5336.166, 5126.201] };
+function finnhubAapl() {
+  const r = REAL.AAPL;
+  return r.ends.map((end, k) => {
+    const filed = new Date(Date.parse(end) + 35 * 86400e3).toISOString().slice(0, 10);
+    const item = (tag, v) => ({ concept: `us-gaap_${tag}`, unit: 'usd', label: tag, value: /PerShare/.test(tag) ? v : v * 1e6 });
+    const ic = Object.entries(r.d).filter(([, vals]) => vals[k] != null).map(([tag, vals]) => item(tag, vals[k]));
+    const bs = Object.entries(r.i).filter(([, vals]) => vals[k] != null).map(([tag, vals]) => item(tag, vals[k]));
+    if (k < 3) for (const [tag, vals] of Object.entries(AAPL_OLD_BS)) bs.push(item(tag, vals[k]));
+    return { accessNumber: `0000320193-${k}`, symbol: 'AAPL', cik: '320193', year: Number(end.slice(0, 4)), quarter: 0, form: '10-K', startDate: `${new Date(Date.parse(end) - 364 * 86400e3).toISOString().slice(0, 10)} 00:00:00`, endDate: `${end} 00:00:00`, filedDate: `${filed} 00:00:00`, report: { ic, cf: [], bs } };
+  });
 }
 
 // Fake Finnhub trade stream: a trade for a random subscribed symbol every ~300 ms.

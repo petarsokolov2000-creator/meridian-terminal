@@ -1,15 +1,17 @@
 // VAL: is the stock cheap or expensive against its own history and its peers?
 // DCF: what the business is worth if its cash flows follow stated assumptions.
 //
-// Figures: SEC EDGAR 10-K filings (Yahoo's annual statements for companies that don't file 10-Ks
-// with the SEC); prices: Yahoo Finance. Nothing is estimated: a missing input shows n/a, and every
-// number lists the formula behind it. Banks and insurers get bank metrics (EBITDA and free cash
+// Figures: SEC EDGAR 10-K/10-Q filings first, then Yahoo, then Finnhub for gaps (see
+// server/fundamentals.mjs); prices: Yahoo Finance. "Now" = today's price with the last 12 months.
+// Nothing is estimated: a missing input shows n/a with the reason, every fallback figure is marked,
+// and every number lists the formula behind it. Banks and insurers get bank metrics (EBITDA and free cash
 // flow don't describe them), and no DCF.
 
 import { register } from '../registry.js';
 import { num, big, esc, el, dir, store, save } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { help } from '../glossary.js';
+import { na, nowMark, nowLines, windowMark, srcOnly, statusLine, mark, why } from '../sources.js';
 
 const NA = '<span class="dim">n/a</span>';
 const x = (v, dp = 1) => (v == null || !Number.isFinite(v) ? NA : `${num(v, dp)}×`);
@@ -30,15 +32,17 @@ const loading = (ctx, what) => {
 
 // [key, label, format, formula, lower is cheaper?]
 export const METRICS = {
-  pe: ['P/E', x, 'Share price ÷ diluted earnings per share (latest fiscal year)', true],
+  pe: ['P/E', x, 'Share price ÷ diluted earnings per share (last 12 months)', true],
   evEbitda: ['EV / EBITDA', x, '(Market value + debt − cash & short-term investments) ÷ (EBIT + depreciation & amortization)', true],
   ps: ['P / S', x, 'Market value ÷ revenue', true],
   pfcf: ['P / FCF', x, 'Market value ÷ (operating cash flow − capital expenditure)', true],
   fcfYield: ['FCF yield', pc, '(Operating cash flow − capital expenditure) ÷ market value', false],
   pb: ['P / B', x, "Market value ÷ (shareholders' equity − preferred stock)", true],
   ptbv: ['P / TBV', x, 'Market value ÷ (common equity − goodwill − other intangibles)', true],
-  divYield: ['Dividend yield', pc, 'Dividends declared per share (fiscal year) ÷ share price', false],
+  divYield: ['Dividend yield', pc, 'Dividends declared per share (last 12 months) ÷ share price', false],
 };
+// the "now" figures each multiple uses
+export const NOW_INPUTS = { pe: ['epsDil'], evEbitda: ['shares', 'netDebt', 'ebitda'], ps: ['shares', 'revenue'], pfcf: ['shares', 'fcf'], fcfYield: ['shares', 'fcf'], pb: ['shares', 'commonEquity'], ptbv: ['shares', 'tangibleEquity'], divYield: ['dps'] };
 
 // ---- VAL ------------------------------------------------------------------------------------
 
@@ -65,8 +69,9 @@ register({
       head.innerHTML = [
         ['Price', `${num(cur.price, 2)} ${esc(v.priceCurrency || '')}`],
         [`Market value${help('marketCap')}`, cur.marketCap ? big(cur.marketCap) : NA],
-        ['Fiscal year used', `FY${v.latestFy} <span class="dim">(ended ${v.latestEnd})</span>`],
-        ['Industry (SEC)', v.profile?.sic ? `${v.profile.sic} · ${esc(v.profile.sicDescription || '')}` : NA],
+        [`"Now" uses${help('ttm')}`, v.now?.ttmEnd ? `last 12 months to ${v.now.ttmEnd}${v.now.ttmSource === 'Yahoo' ? ' <span class="dim">(Yahoo)</span>' : ''}${v.now.fyOnly ? ' <span class="dim">(some items: FY)</span>' : ''}` : v.now?.fyOnly ? `FY${v.latestFy} <span class="dim">(no trailing-12-month figures available)</span>` : `last 12 months = FY${v.latestFy} <span class="dim">(no 10-Q since ${v.latestEnd})</span>`],
+        ['History', `FY${v.years[0].fy}–FY${v.latestFy} <span class="dim">(fiscal years)</span>`],
+        [v.profile?.sic ? 'Industry (SEC)' : 'Industry', v.profile?.sic ? `${v.profile.sic} · ${esc(v.profile.sicDescription || '')}` : v.industrySource ? esc(v.industrySource) : NA],
         ['Treated as', v.financial ? 'bank / insurer' : 'operating company'],
       ].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
@@ -103,8 +108,9 @@ register({
         table.innerHTML = `<table class="tbl val-tbl"><thead><tr><th class="l">Metric</th><th class="r">Now</th><th class="r">5y median${help('median5y')}</th><th class="r">5y range</th><th class="r">10y median</th><th class="r">10y range</th><th class="r">Peer median${help('peers')}</th><th class="r" title="Now vs the 5-year median (green = cheaper)">vs 5y</th><th class="r" title="Now vs the peer median (green = cheaper)">vs peers</th></tr></thead><tbody>
           ${keys.map((k) => {
             const st = v.stats[k];
-            const win = (w, n) => (w.short ? NA : `${fmt(k, w.median)}${w.n < n ? ` <span class="dim small" title="Only ${w.n} of the last ${n} fiscal years had every input for this multiple">${w.n}/${n} yrs</span>` : ''}`);
-            return `<tr data-k="${k}" class="${k === sel ? 'self' : ''}" style="cursor:pointer"><td class="l">${METRICS[k][0]}${help(k)}</td><td class="r"><b>${fmt(k, cur[k])}</b></td>
+            const win = (w, n) => (w.short ? NA : `${fmt(k, w.median)}${windowMark(w.src)}${w.n < n ? ` <span class="dim small" title="Only ${w.n} of the last ${n} fiscal years had every input for this multiple">${w.n}/${n} yrs</span>` : ''}`);
+            return `<tr data-k="${k}" class="${k === sel ? 'self' : ''}" style="cursor:pointer"><td class="l">${METRICS[k][0]}${help(k)}</td>
+              <td class="r">${cur[k] == null ? na(cur.meta?.[k]?.why) : `<b>${fmt(k, cur[k])}</b>${nowMark(N, NOW_INPUTS[k], cur.meta?.[k])}`}</td>
               <td class="r">${win(st.y5, 5)}</td><td class="r">${range({ ...st.y5, k })}</td><td class="r">${win(st.y10, 10)}</td><td class="r">${range({ ...st.y10, k })}</td>
               <td class="r">${peerState.data ? fmt(k, peerMedian(k)) : '<span class="dim">…</span>'}</td><td class="r">${st.y5.short ? NA : vs(cur[k], st.y5.median, k)}</td><td class="r">${vs(cur[k], peerMedian(k), k)}</td></tr>`;
           }).join('')}</tbody></table>`;
@@ -130,31 +136,37 @@ register({
         });
       };
 
-      // the formula and the actual inputs behind every "now" figure
-      const y = v.years[v.years.length - 1];
+      // the formula and the actual inputs behind every "now" figure, with each input's source
+      const N = v.now?.fields || {};
+      const nv = (k) => N[k]?.val ?? null;
       const M = (val) => (val == null ? 'n/a' : big(val));
       const inputs = {
-        pe: `${num(cur.price, 2)} ÷ ${y.epsDil == null ? 'n/a' : num(y.epsDil, 2)}`,
-        evEbitda: `(${M(cur.marketCap)} + ${M(y.debt)} − ${M(y.cashAll)}) ÷ (${M(y.ebit)} + ${M(y.da)})${y.formulas?.ebit && !/^Operating/.test(y.formulas.ebit) ? ` · EBIT = ${esc(y.formulas.ebit.toLowerCase())}` : ''}`,
-        ps: `${M(cur.marketCap)} ÷ ${M(y.revenue)}`,
-        pfcf: `${M(cur.marketCap)} ÷ (${M(y.ocf)} − ${M(y.capex)})`,
-        fcfYield: `(${M(y.ocf)} − ${M(y.capex)}) ÷ ${M(cur.marketCap)}`,
-        pb: `${M(cur.marketCap)} ÷ (${M(y.equity)} − ${M(y.preferred ?? 0)})`,
-        ptbv: `${M(cur.marketCap)} ÷ (${M(y.commonEquity)} − ${M(y.goodwill ?? 0)} − ${M(y.intangibles ?? 0)})`,
-        divYield: `${y.dps == null ? 'n/a' : num(y.dps, 2)} ÷ ${num(cur.price, 2)}`,
+        pe: `${num(cur.price, 2)} ÷ ${nv('epsDil') == null ? 'n/a' : num(nv('epsDil'), 2)}`,
+        evEbitda: `(${M(cur.marketCap)} + ${M(nv('debt'))} − ${M(nv('cashAll'))}) ÷ (${M(nv('ebit'))} + ${M(nv('da'))})${N.ebit?.formula && !/^Operating/.test(N.ebit.formula) ? ` · EBIT = ${esc(N.ebit.formula.toLowerCase())}` : ''}`,
+        ps: `${M(cur.marketCap)} ÷ ${M(nv('revenue'))}`,
+        pfcf: `${M(cur.marketCap)} ÷ (${M(nv('ocf'))} − ${M(nv('capex'))})`,
+        fcfYield: `(${M(nv('ocf'))} − ${M(nv('capex'))}) ÷ ${M(cur.marketCap)}`,
+        pb: `${M(cur.marketCap)} ÷ (${M(nv('equity'))} − ${M(nv('preferred') ?? 0)})`,
+        ptbv: `${M(cur.marketCap)} ÷ (${M(nv('commonEquity'))} − ${M(nv('goodwill') ?? 0)} − ${M(nv('intangibles') ?? 0)})`,
+        divYield: `${nv('dps') == null ? 'n/a' : num(nv('dps'), 2)} ÷ ${num(cur.price, 2)}`,
       };
-      formulas.innerHTML = `<h3>How each figure is calculated (now, FY${v.latestFy})</h3><table class="tbl small"><tbody>${keys.map((k) => `<tr><td class="l"><b>${METRICS[k][0]}</b></td><td class="l val-formula">${esc(METRICS[k][2])}<br><span class="dim">= ${inputs[k]} = </span>${fmt(k, cur[k])}</td></tr>`).join('')}
-        <tr><td class="l"><b>Market value</b></td><td class="l val-formula">Share price × ${esc(cur.sharesBasis || 'shares')}<br><span class="dim">= ${num(cur.price, 2)} × ${M(cur.shares)}</span></td></tr></tbody></table>`;
+      const srcList = (k) => {
+        const lines = nowLines(N, NOW_INPUTS[k]);
+        const mixed = (cur.meta?.[k]?.src || '').includes('+');
+        return lines.length ? `<br><span class="dim small">${mixed ? '<b>Mixes sources.</b> ' : ''}${lines.map(esc).join('<br>')}</span>` : '';
+      };
+      formulas.innerHTML = `<h3>How each figure is calculated (now = ${v.now?.ttmEnd ? `last 12 months to ${esc(v.now.ttmEnd)}` : v.now?.fyOnly ? `FY${v.latestFy}: no trailing figures` : `FY${v.latestFy}, the latest report`})</h3><table class="tbl small"><tbody>${keys.map((k) => `<tr><td class="l"><b>${METRICS[k][0]}</b></td><td class="l val-formula">${esc(METRICS[k][2])}<br><span class="dim">= ${inputs[k]} = </span>${cur[k] == null ? na(cur.meta?.[k]?.why) : fmt(k, cur[k])}${srcList(k)}</td></tr>`).join('')}
+        <tr><td class="l"><b>Market value</b></td><td class="l val-formula">Share price × shares outstanding<br><span class="dim">= ${num(cur.price, 2)} × ${M(cur.shares)} · shares: ${esc(cur.sharesBasis || '')}${N.shares?.src && N.shares.src !== 'SEC' ? ` (${esc(N.shares.src)})` : ''}</span></td></tr></tbody></table>`;
 
       // peers: SEC industry code, editable
       const drawPeers = () => {
         const rows = peerState.rows;
-        const own = { symbol: s.sym, ...cur, fy: v.latestFy, self: true };
+        const own = { symbol: s.sym, ...cur, fy: v.latestFy, ttmEnd: v.now?.ttmEnd || null, self: true };
         peersBox.innerHTML = `<h3>Peers ${peerState.data?.rule ? `<span class="dim">· ${esc(peerState.data.rule)}</span>` : peerState.extra.length ? '<span class="dim">· added by you</span>' : ''}</h3>
           ${peerState.error ? `<p class="note">${esc(peerState.error)}</p>` : !peerState.data ? '<p class="note">Finding companies with the same SEC industry code and loading their 10-K figures (first time takes 20–30 seconds)…</p>' : ''}
-          ${rows.length ? `<table class="tbl"><thead><tr><th class="l">Company</th><th class="r">FY</th>${keys.map((k) => `<th class="r">${METRICS[k][0]}</th>`).join('')}<th></th></tr></thead><tbody>
+          ${rows.length ? `<table class="tbl"><thead><tr><th class="l">Company</th><th class="r">Period</th>${keys.map((k) => `<th class="r">${METRICS[k][0]}</th>`).join('')}<th></th></tr></thead><tbody>
             ${[own, ...rows].map((r) => `<tr class="${r.self ? 'self' : ''}"><td class="l">${r.self ? `<b>${esc(r.symbol)}</b>` : `<a href="#" class="sec" data-sec="${esc(r.symbol)}">${esc(r.symbol)}</a>`}</td>
-              <td class="r dim">${r.fy ? `FY${r.fy}` : ''}</td>${r.error ? `<td class="l dim" colspan="${keys.length}">${esc(r.error)}</td>` : r.currencyMismatch ? `<td class="l dim" colspan="${keys.length}">reports in another currency than its share price: n/a</td>` : keys.map((k) => `<td class="r">${fmt(k, r[k])}</td>`).join('')}
+              <td class="r dim" title="${r.ttmEnd ? `last 12 months to ${r.ttmEnd}` : 'last 12 months = the latest fiscal year (no 10-Q since)'}">${r.ttmEnd ? `TTM ${r.ttmEnd.slice(0, 7)}` : r.fy ? `FY${r.fy}` : ''}</td>${r.error ? `<td class="l dim" colspan="${keys.length}">${esc(r.error)}</td>` : r.currencyMismatch ? `<td class="l dim" colspan="${keys.length}">reports in another currency than its share price: n/a</td>` : keys.map((k) => `<td class="r">${r[k] == null ? (r.self ? na(cur.meta?.[k]?.why) : na(r.meta?.[k]?.why)) : `${fmt(k, r[k])}${r.self ? '' : srcOnly(r.meta?.[k]?.src, `${r.symbol} ${METRICS[k][0]}`, r.meta?.[k]?.basis)}`}</td>`).join('')}
               <td class="r">${r.self ? '' : `<a href="#" class="dim" data-rm="${esc(r.symbol)}" title="Remove this peer">×</a>`}</td></tr>`).join('')}
             <tr><td class="l"><b>Median</b></td><td></td>${keys.map((k) => `<td class="r"><b>${fmt(k, peerMedian(k))}</b></td>`).join('')}<td></td></tr></tbody></table>` : ''}
           <div class="val-add"><input placeholder="Add a peer (ticker)" maxlength="12" data-add> <button class="tb" data-addbtn>Add</button>${peerState.removed.length ? ` <button class="tb" data-reset>Reset peers</button>` : ''}</div>`;
@@ -214,7 +226,7 @@ register({
         if (e.key === 'Enter' && e.target.matches('[data-add]')) peersBox.querySelector('[data-addbtn]').click();
       });
 
-      note.innerHTML = `Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices: ${esc(v.priceSource)}. "Now" = today's price with the latest fiscal year's figures (not trailing 12 months). History = the price at each fiscal year end with that year's figures, which were published about 1–2 months later. Medians and ranges use only the years available: a 10-year figure needs 10 fiscal years, otherwise n/a. Per-share figures are adjusted for stock splits${v.splits.length ? ` (${v.splits.map((sp) => `${esc(sp.ratio)} on ${sp.date}`).join(', ')})` : ''}. Negative earnings or cash flow give n/a for that multiple.`;
+      note.innerHTML = `${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices: ${esc(v.priceSource)}. "Now" = today's price with the last 12 months (latest fiscal year + the 10-Q year to date − the same months a year earlier) and the latest balance sheet, to match KEYS; "FY" marks a figure where only the fiscal year was available. History = the price at each fiscal year end with that year's figures, which were published about 1–2 months later. Medians and ranges use only the years available: a 10-year figure needs 10 fiscal years, otherwise n/a. Per-share figures are adjusted for stock splits${v.splits.length ? ` (${v.splits.map((sp) => `${esc(sp.ratio)} on ${sp.date}`).join(', ')})` : ''}. Negative earnings or cash flow give n/a for that multiple.`;
       drawTable();
       drawChart();
       drawPeers();
@@ -293,6 +305,13 @@ export function dcfDefaults(years, { beta, rf, erp = 0.05, terminal = 0.025 }) {
   out.shares = last.sharesOut ?? last.sharesDil;
   out.notes.shares = `FY${last.fy} ${last.sharesOut != null ? 'shares outstanding' : 'diluted average shares'}`;
   out.fy = last.fy;
+  out.last = last;
+  // years whose inputs came from a fallback source (Yahoo/Finnhub), per default
+  const other = (ys2, fields) => ys2.flatMap((y) => fields.map((f) => y.src?.[f]?.s).filter((src) => src && src !== 'SEC').map((src) => `FY${y.fy}: ${src}`));
+  out.fallback = {
+    growth: span >= 2 ? [...new Set(other([ys[ys.length - 1 - span], last], ['revenue']))] : [],
+    margin: [...new Set(other(ys.slice(-5).filter((y) => y.fcf != null), ['fcf', 'revenue']))],
+  };
   return out;
 }
 
@@ -347,7 +366,7 @@ register({
         form.innerHTML = `<table class="tbl"><thead><tr><th class="l">Assumption</th><th class="r">Bear</th><th class="r">Base</th><th class="r">Bull</th><th class="l">Default comes from</th></tr></thead><tbody>
           ${[['growth', 'Revenue growth, years 1–5 (%/yr)', 'growthAssumption'], ['margin', 'Free-cash-flow margin (% of revenue)', 'fcfMarginAssumption'], ['discount', 'Discount rate (%)', 'discountRate'], ['terminal', 'Terminal growth after year 10 (%)', 'terminalGrowth']].map(([k, label, hk]) => `<tr><td class="l">${label}${help(hk)}</td>
             ${['bear', 'base', 'bull'].map((sc) => `<td class="r"><input type="number" step="0.1" inputmode="decimal" data-sc="${sc}" data-k="${k}" value="${P(scen[sc][k])}" placeholder="n/a"></td>`).join('')}
-            <td class="l dim small">${esc(d.notes[k])}</td></tr>`).join('')}
+            <td class="l dim small">${esc(d.notes[k])}${windowMark(d.fallback?.[k])}</td></tr>`).join('')}
           </tbody></table><div class="val-add"><button class="tb" data-reset>Reset to defaults</button> <span class="dim small">Bear/bull start at base ∓3 pts growth, ∓2 pts margin, ±1 pt discount rate. Years 6–10: growth fades in a straight line to terminal growth.</span></div>`;
       };
       form.addEventListener('change', (e) => {
@@ -394,10 +413,10 @@ register({
       notes.innerHTML = `<h3>Method and inputs</h3><table class="tbl small"><tbody>
         <tr><td class="l"><b>Fair value / share</b>${help('dcf')}</td><td class="l val-formula">(Σ PV of free cash flow, years 1–10 + PV of terminal value − net debt) ÷ shares<br><span class="dim">PV = cash flow ÷ (1 + discount rate)^year · terminal value = FCF year 10 × (1 + terminal growth) ÷ (discount rate − terminal growth)</span></td></tr>
         <tr><td class="l"><b>Margin of safety</b></td><td class="l val-formula">(Fair value − price) ÷ fair value · positive = price below fair value</td></tr>
-        <tr><td class="l">Starting revenue</td><td class="l">${big(d.revenue0)} <span class="dim">(${esc(d.notes.revenue0)})</span></td></tr>
-        <tr><td class="l">Net debt</td><td class="l">${d.netDebt == null ? NA : big(d.netDebt)} <span class="dim">(${esc(d.notes.netDebt)})</span></td></tr>
-        <tr><td class="l">Shares</td><td class="l">${big(d.shares)} <span class="dim">(${esc(d.notes.shares)})</span></td></tr></tbody></table>
-        <p class="note">Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; beta: Yahoo Finance (5-year monthly); 10-year Treasury: Yahoo Finance (^TNX)${rf != null ? `, ${num(rf * 100, 2)}% now` : ' (not loaded: enter a discount rate)'}; price: Yahoo Finance. Free cash flow = operating cash flow − capital expenditure; stock-based compensation is not subtracted, which flatters companies that pay heavily in stock. A DCF is only as good as its assumptions: small changes in the discount rate or terminal growth move the result a lot (see the table).</p>`;
+        <tr><td class="l">Starting revenue</td><td class="l">${big(d.revenue0)}${mark(d.last, ['revenue'])} <span class="dim">(${esc(d.notes.revenue0)})</span></td></tr>
+        <tr><td class="l">Net debt</td><td class="l">${d.netDebt == null ? na(why(d.last, ['netDebt'])) : `${big(d.netDebt)}${mark(d.last, ['netDebt'])}`} <span class="dim">(${esc(d.notes.netDebt)})</span></td></tr>
+        <tr><td class="l">Shares</td><td class="l">${d.shares == null ? na(why(d.last, ['shares'])) : `${big(d.shares)}${mark(d.last, ['shares'])}`} <span class="dim">(${esc(d.notes.shares)})</span></td></tr></tbody></table>
+        <p class="note">${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; beta: Yahoo Finance (5-year monthly); 10-year Treasury: Yahoo Finance (^TNX)${rf != null ? `, ${num(rf * 100, 2)}% now` : ' (not loaded: enter a discount rate)'}; price: Yahoo Finance. Free cash flow = operating cash flow − capital expenditure; stock-based compensation is not subtracted, which flatters companies that pay heavily in stock. A DCF is only as good as its assumptions: small changes in the discount rate or terminal growth move the result a lot (see the table).</p>`;
       drawForm();
       drawOut();
     }).catch((err) => {

@@ -9,8 +9,9 @@
 import { register } from '../registry.js';
 import { num, esc, el, store, save } from '../fmt.js';
 import { help } from '../glossary.js';
-import { qualityRows, capitalRows, cagr, wacc } from './quality.js';
-import { dcf, dcfDefaults } from './valuation.js';
+import { qualityRows, capitalRows, cagr, wacc, Q_INPUTS, Q_INPUTS_FIN, capInputs } from './quality.js';
+import { dcf, dcfDefaults, NOW_INPUTS } from './valuation.js';
+import { mark, why, na, nowMark, windowMark, baseFields, statusLine } from '../sources.js';
 
 const fin = (v) => v != null && Number.isFinite(v);
 const median = (xs) => {
@@ -68,7 +69,7 @@ export const RULES = {
     ['equityAssets', 'Debt', 'Common equity / total assets', 'equityToAssets', '>=', 0.07, 'pct'],
     ['pbPrem', 'Valuation', 'P/B now vs its own 5-year median (premium)', 'pb', '<=', 0, 'rel'],
     ['pePrem', 'Valuation', 'P/E now vs its own 5-year median (premium)', 'pe', '<=', 0, 'rel'],
-    ['divYield', 'Valuation', 'Dividend yield (latest fiscal year’s dividends)', 'divYield', '>=', 0.02, 'pct'],
+    ['divYield', 'Valuation', 'Dividend yield (dividends of the last 12 months)', 'divYield', '>=', 0.02, 'pct'],
     ['shares5', 'Shareholders', 'Share count change over 5 years', 'shareCount', '<=', 0, 'rel'],
   ],
 };
@@ -84,72 +85,91 @@ export function checkValues(v, extra) {
   const c = capitalRows(years, financial);
   const last = q[q.length - 1];
   const out = {};
-  const NA = (why) => ({ v: null, why });
+  const NA = (reason) => ({ v: null, why: reason });
+  const QI = financial ? Q_INPUTS_FIN : Q_INPUTS;
+  // a latest-year metric with its source marker, or n/a with the reason
+  const qv = (row, key, detail, spec = QI, fallbackWhy = 'not meaningful (negative or zero)') => (fin(row?.[key])
+    ? { v: row[key], detail, mk: mark(row._y, spec[key][0], row._p, spec[key][1] || []) }
+    : NA((row && why(row._y, spec[key][0])) || fallbackWhy));
+  // the years in a window whose inputs came from a fallback source
+  const yearsMark = (rows, key, spec = QI) => windowMark(rows.flatMap((r) => {
+    const fields = baseFields(r._y, spec[key][0]);
+    const other = [...new Set(fields.map((f) => r._y.src?.[f]?.s))].filter((x) => x && x !== 'SEC');
+    return other.length ? [`FY${r.fy}: ${other.join('+')}`] : [];
+  }));
+  const at = (fy) => years.find((y) => y.fy === fy);
+  const N = v.now?.fields || {};
+  const nowMk = (k) => nowMark(N, NOW_INPUTS[k], v.current.meta?.[k]);
   const g = (key, src = years) => {
     const r = cagr(src, key, 5);
-    return fin(r.v) ? { v: r.v, detail: `FY${r.from}–FY${r.to}` } : NA(r.why);
+    const fields = key === 'bvps' ? ['commonEquity', 'shares'] : [key];
+    return fin(r.v) ? { v: r.v, detail: `FY${r.from}–FY${r.to}`, mk: mark(at(r.to), fields, at(r.from), fields, 'start of the period') } : NA(r.why);
   };
   const prem = (k) => {
     const st = v.stats[k]?.y5;
     if (!st || st.short) return NA(`needs 5 fiscal years (${years.length} available)`);
-    if (!fin(v.current[k]) || !fin(st.median) || st.median === 0) return NA('not computable (negative or missing figures)');
-    return { v: v.current[k] / st.median - 1, detail: `now ${num(v.current[k], 1)}× vs median ${num(st.median, 1)}×` };
+    if (!fin(v.current[k])) return NA(`now: ${v.current.meta?.[k]?.why || 'not computable'}`);
+    if (!fin(st.median) || st.median === 0) return NA('the 5-year median isn’t computable (negative or missing figures)');
+    return { v: v.current[k] / st.median - 1, detail: `now (last 12 months) ${num(v.current[k], 1)}× vs median ${num(st.median, 1)}×`, mk: nowMk(k) + windowMark(st.src) };
   };
   const yearsWith = (key, thr) => {
     const l5 = q.slice(-5);
     if (l5.length < 5) return NA(`needs 5 fiscal years (${q.length} available)`);
-    if (l5.some((r) => !fin(r[key]))) return NA('some years are missing an input');
-    return { v: l5.filter((r) => r[key] >= thr).length, detail: `FY${l5[0].fy}–FY${l5[4].fy}` };
+    const gap = l5.find((r) => !fin(r[key]));
+    if (gap) return NA(`FY${gap.fy}: ${why(gap._y, QI[key][0]) || 'not meaningful'}`);
+    return { v: l5.filter((r) => r[key] >= thr).length, detail: `FY${l5[0].fy}–FY${l5[4].fy}`, mk: yearsMark(l5, key) };
   };
   const shares5 = () => {
     const r = cagr(c.map((x) => ({ fy: x.fy, s: x.shares })), 's', 5);
-    return fin(r.v) ? { v: r.b / r.a - 1, detail: `FY${r.from}–FY${r.to}` } : NA(r.why);
+    return fin(r.v) ? { v: r.b / r.a - 1, detail: `FY${r.from}–FY${r.to}`, mk: mark(at(r.to), ['shares'], at(r.from), ['shares'], 'start of the period') } : NA(r.why);
   };
   const thr = extra.thresholds;
   if (financial) {
     const re = fin(extra.beta) && fin(extra.rf) ? extra.rf + extra.beta * 0.05 : null;
-    out.roe = fin(last.roe) ? { v: last.roe, detail: `FY${last.fy}` } : NA('not reported');
+    out.roe = qv(last, 'roe', `FY${last.fy}`);
     out.roeYears = yearsWith('roe', thr.roe);
-    out.roeSpread = fin(last.roe) && fin(re) ? { v: last.roe - re, detail: `cost of equity ${num(re * 100, 1)}%` } : NA(fin(re) ? 'ROE not available' : 'needs beta and the Treasury yield');
-    out.rotce = fin(last.rotce) ? { v: last.rotce, detail: `FY${last.fy}` } : NA('not reported');
+    out.roeSpread = fin(last.roe) && fin(re) ? { v: last.roe - re, detail: `cost of equity ${num(re * 100, 1)}%`, mk: out.roe.mk } : NA(fin(re) ? `ROE n/a: ${out.roe.why}` : 'needs beta and the Treasury yield');
+    out.rotce = qv(last, 'rotce', `FY${last.fy}`);
     out.rev5 = g('revenue');
     out.eps5 = g('epsDil');
     out.bvps5 = g('bvps', q);
-    out.efficiency = fin(last.efficiency) ? { v: last.efficiency, detail: `FY${last.fy}` } : NA('non-interest expense not reported');
-    out.equityAssets = fin(last.equityToAssets) ? { v: last.equityToAssets, detail: `FY${last.fy}` } : NA('total assets not reported');
+    out.efficiency = qv(last, 'efficiency', `FY${last.fy}`);
+    out.equityAssets = qv(last, 'equityToAssets', `FY${last.fy}`);
     out.pbPrem = prem('pb');
     out.pePrem = prem('pe');
-    out.divYield = fin(v.current.divYield) ? { v: v.current.divYield, detail: `FY${v.latestFy} dividends ÷ today’s price` } : NA('dividends per share not reported');
+    out.divYield = fin(v.current.divYield) ? { v: v.current.divYield, detail: `dividends declared in the last 12 months ÷ today’s price`, mk: nowMk('divYield') } : NA(v.current.meta?.divYield?.why || 'dividends per share not reported');
     out.shares5 = shares5();
     return out;
   }
   const w = wacc(years, { price: extra.price, beta: extra.beta, rf: extra.rf });
-  out.roic = fin(last.roic) ? { v: last.roic, detail: `FY${last.fy}` } : NA('an input (EBIT, tax rate or capital) is missing');
+  out.roic = fin(last.roic) ? qv(last, 'roic', `FY${last.fy}`) : NA(why(last._y, Q_INPUTS.roic[0]) || (last.taxRate == null ? 'the effective tax rate is outside 0–60%' : 'not meaningful'));
   out.roicYears = yearsWith('roic', thr.roic);
-  out.roicSpread = fin(last.roic) && fin(w.v) ? { v: last.roic - w.v, detail: `WACC ${num(w.v * 100, 1)}%` } : NA(!fin(w.v) ? `WACC n/a: ${w.why}` : 'ROIC n/a');
+  out.roicSpread = fin(last.roic) && fin(w.v) ? { v: last.roic - w.v, detail: `WACC ${num(w.v * 100, 1)}%`, mk: out.roic.mk } : NA(!fin(w.v) ? `WACC n/a: ${w.why}` : `ROIC n/a: ${out.roic.why}`);
   const gm = q.slice(-5).map((r) => r.grossMargin);
-  out.gmRange = q.length >= 5 && gm.every(fin) ? { v: Math.max(...gm) - Math.min(...gm), detail: `${num(Math.min(...gm) * 100, 1)}%–${num(Math.max(...gm) * 100, 1)}%` } : NA(q.length < 5 ? 'needs 5 fiscal years' : 'gross profit not reported every year');
+  const gmGap = q.slice(-5).find((r) => !fin(r.grossMargin));
+  out.gmRange = q.length >= 5 && gm.every(fin) ? { v: Math.max(...gm) - Math.min(...gm), detail: `${num(Math.min(...gm) * 100, 1)}%–${num(Math.max(...gm) * 100, 1)}%`, mk: yearsMark(q.slice(-5), 'grossMargin') } : NA(q.length < 5 ? 'needs 5 fiscal years' : `FY${gmGap.fy}: ${why(gmGap._y, Q_INPUTS.grossMargin[0]) || 'not meaningful'}`);
   out.rev5 = g('revenue');
   out.eps5 = g('epsDil');
   out.fcf5 = g('fcf');
-  out.opm = fin(last.opMargin) ? { v: last.opMargin, detail: `FY${last.fy}` } : NA('operating income not reported');
+  out.opm = qv(last, 'opMargin', `FY${last.fy}`);
   const opMed = median(q.slice(-5).map((r) => r.opMargin));
-  out.opmTrend = q.length >= 5 && fin(last.opMargin) && fin(opMed) ? { v: last.opMargin - opMed, detail: `median ${num(opMed * 100, 1)}%` } : NA('needs 5 years of operating margins');
+  out.opmTrend = q.length >= 5 && fin(last.opMargin) && fin(opMed) ? { v: last.opMargin - opMed, detail: `median ${num(opMed * 100, 1)}%`, mk: yearsMark(q.slice(-5), 'opMargin') } : NA(q.length < 5 ? 'needs 5 fiscal years' : !fin(last.opMargin) ? out.opm.why : 'needs 5 years of operating margins');
   const f5 = years.slice(-5).map((y) => y.fcf);
-  out.fcfPos = years.length >= 5 && f5.every(fin) ? { v: f5.filter((x) => x > 0).length, detail: `FY${years[years.length - 5].fy}–FY${years[years.length - 1].fy}` } : NA('needs 5 years of free cash flow');
+  const fcfGap = years.slice(-5).find((y) => !fin(y.fcf));
+  out.fcfPos = years.length >= 5 && f5.every(fin) ? { v: f5.filter((x) => x > 0).length, detail: `FY${years[years.length - 5].fy}–FY${years[years.length - 1].fy}`, mk: yearsMark(q.slice(-5), 'fcf') } : NA(years.length < 5 ? 'needs 5 fiscal years' : `FY${fcfGap.fy}: ${why(fcfGap, ['fcf'])?.replace(/^FY\d+ /, '') || 'not reported'}`);
   const fn = median(q.slice(-5).map((r) => r.fcfToNi));
-  out.fcfNi = fin(fn) ? { v: fn, detail: `median of ${q.slice(-5).filter((r) => fin(r.fcfToNi)).length} years` } : NA('needs positive net income');
+  out.fcfNi = fin(fn) ? { v: fn, detail: `median of ${q.slice(-5).filter((r) => fin(r.fcfToNi)).length} years`, mk: yearsMark(q.slice(-5).filter((r) => fin(r.fcfToNi)), 'fcfToNi') } : NA('needs positive net income');
   const lc = c[c.length - 1];
-  out.sbc = fin(lc.sbcRevenue) ? { v: lc.sbcRevenue, detail: `FY${lc.fy}` } : NA('stock-based pay not reported');
-  out.ndEbitda = fin(last.netDebtEbitda) ? { v: last.netDebtEbitda, detail: `FY${last.fy}` } : NA('debt, cash or EBITDA not reported');
+  out.sbc = qv(lc, 'sbcRevenue', `FY${lc.fy}`, capInputs(false));
+  out.ndEbitda = qv(last, 'netDebtEbitda', `FY${last.fy}`);
   const cov = [...q].reverse().find((r) => fin(r.coverage));
-  out.coverage = cov ? { v: cov.coverage, detail: `FY${cov.fy}` } : NA('interest expense not reported');
+  out.coverage = cov ? qv(cov, 'coverage', `FY${cov.fy}`) : NA(why(last._y, Q_INPUTS.coverage[0]) || 'interest expense not reported');
   out.pePrem = prem('pe');
   out.evPrem = prem('evEbitda');
-  out.fcfYield = fin(v.current.fcfYield) ? { v: v.current.fcfYield, detail: `FY${v.latestFy} FCF ÷ today’s market value` } : NA('free cash flow not available');
+  out.fcfYield = fin(v.current.fcfYield) ? { v: v.current.fcfYield, detail: 'free cash flow, last 12 months ÷ today’s market value', mk: nowMk('fcfYield') } : NA(v.current.meta?.fcfYield?.why || 'free cash flow not available');
   if (extra.dcfBase && extra.dcfInputs) {
     const r = dcf({ ...extra.dcfInputs, ...extra.dcfBase });
-    out.dcfMos = !r.error && r.perShare > 0 && fin(extra.price) ? { v: (r.perShare - extra.price) / r.perShare, detail: `fair value ${num(r.perShare, 2)} (${extra.dcfSaved ? 'your saved DCF base case' : 'DCF default base case'})` } : NA(r.error || 'the DCF gives no positive value');
+    out.dcfMos = !r.error && r.perShare > 0 && fin(extra.price) ? { v: (r.perShare - extra.price) / r.perShare, detail: `fair value ${num(r.perShare, 2)} (${extra.dcfSaved ? 'your saved DCF base case' : 'DCF default base case'})`, mk: extra.dcfLast ? mark(extra.dcfLast, ['revenue', 'netDebt', 'shares']) + windowMark(extra.dcfFallback) : '' } : NA(r.error || 'the DCF gives no positive value');
   } else out.dcfMos = NA('no DCF inputs');
   out.shares5 = shares5();
   const sg = extra.segments;
@@ -201,11 +221,11 @@ register({
       const d = v.financial || v.currencyMismatch ? null : dcfDefaults(v.years, { beta, rf });
       const extra = {
         beta, rf, price: v.current.price, segments: null,
-        dcfInputs: d ? { revenue0: d.revenue0, netDebt: d.netDebt, shares: d.shares } : null,
+        dcfInputs: d ? { revenue0: d.revenue0, netDebt: d.netDebt, shares: d.shares } : null, dcfLast: d?.last || null, dcfFallback: d ? [...new Set([...(d.fallback?.growth || []), ...(d.fallback?.margin || [])])] : null,
         dcfBase: saved || (d ? { growth: d.growth, margin: d.margin, discount: d.discount, terminal: d.terminal } : null), dcfSaved: !!saved,
       };
       const head = el('div', 'port-head');
-      head.innerHTML = [['Company', `${esc(s.sym)} <span class="dim small">${esc(s.name || '')}</span>`], ['Checked as', v.financial ? 'bank / insurer' : 'operating company'], ['Latest fiscal year', `FY${v.latestFy}`], ['Price', num(v.current.price, 2)]]
+      head.innerHTML = [['Company', `${esc(s.sym)} <span class="dim small">${esc(s.name || '')}</span>`], ['Checked as', v.financial ? 'bank / insurer' : 'operating company'], ['Latest fiscal year', `FY${v.latestFy}${v.now?.ttmEnd ? ` <span class="dim small">· now = last 12 months to ${v.now.ttmEnd}</span>` : ''}`], ['Price', num(v.current.price, 2)]]
         .map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       const table = el('div', 'tbl-wrap');
       const risks = el('div', 'val-formulas');
@@ -223,7 +243,7 @@ register({
             if (val.noneTagged && thr >= 0.1 - 1e-12) ok = true;
             const head2 = sec !== section ? `<tr class="q-sec"><td class="l" colspan="5">${esc((section = sec))}</td></tr>` : '';
             const detail = esc(fin(val.v) ? val.detail || '' : val.noneTagged && ok ? 'no customer at 10% or more is disclosed in the 10-K' : val.why || '');
-            return `${head2}<tr><td class="l chk-label">${esc(label)}${help(hk)}<div class="chk-sub dim small">${detail}</div></td><td class="r"><b>${fin(val.v) ? SHOW[fmt](val.v) : val.noneTagged ? 'none tagged' : '<span class="dim">n/a</span>'}</b></td>
+            return `${head2}<tr><td class="l chk-label">${esc(label)}${help(hk)}<div class="chk-sub dim small">${detail}</div></td><td class="r"><b>${fin(val.v) ? SHOW[fmt](val.v) : val.noneTagged ? 'none tagged' : /sources disagree/.test(val.why || '') ? na(val.why) : '<span class="dim">n/a</span>'}</b>${fin(val.v) ? val.mk || '' : ''}</td>
               <td class="l chk-rule">${op === '>=' ? '≥' : '≤'} <input type="number" step="any" inputmode="decimal" data-id="${id}" data-fmt="${fmt}" value="${TO_INPUT[fmt](thr)}"> ${UNIT[fmt]}</td>
               <td class="c chk-res ${ok == null ? 'dim' : ok ? 'up' : 'down'}" title="${ok == null ? 'not enough data' : ok ? 'meets the rule' : 'misses the rule'}">${ok == null ? 'n/a' : ok ? '✓' : '✗'}</td>
               <td class="l dim small chk-detail">${detail}</td></tr>`;
@@ -261,7 +281,7 @@ register({
           extra.segments = { error: err.message };
         }).finally(() => !gone && draw());
       }
-      note.innerHTML = `Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices, beta and Treasury yield: Yahoo Finance; customers and segments: the latest 10-K. Each line uses the same calculation as ${v.financial ? 'VAL and QUAL' : 'VAL, DCF, QUAL, CAP and SEG'} (tap ? for the definition). The default thresholds are common rules of thumb, not recommendations; they suit some industries better than others, so change them to your own. <b>There is no overall score on purpose:</b> the lines aren't equally important, and a stock can fail several and still be a good investment (or pass them all and be a poor one). n/a means the data needed isn't reported.`;
+      note.innerHTML = `${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices, beta and Treasury yield: Yahoo Finance; customers and segments: the latest 10-K. Each line uses the same calculation as ${v.financial ? 'VAL and QUAL' : 'VAL, DCF, QUAL, CAP and SEG'} (tap ? for the definition). The default thresholds are common rules of thumb, not recommendations; they suit some industries better than others, so change them to your own. <b>There is no overall score on purpose:</b> the lines aren't equally important, and a stock can fail several and still be a good investment (or pass them all and be a poor one). n/a means the data needed isn't reported.`;
     }).catch((err) => {
       if (!gone) wait.textContent = `Couldn't load the checklist data: ${err.message}`;
     });

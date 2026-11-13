@@ -22,7 +22,13 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
   async function request(url) {
     const headers = { 'user-agent': UA, accept: 'application/json,text/plain,*/*' };
     if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
-    const res = await fetchImpl(url, { headers, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+    let res;
+    try {
+      res = await fetchImpl(url, { headers, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+    } catch (err) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw Object.assign(new YahooError("Yahoo Finance didn't answer within 15 s (timeout)", 504), { http: 'timeout' });
+      throw Object.assign(new YahooError(`Yahoo Finance couldn't be reached (${err?.message || 'network error'})`, 502), { http: 'network' });
+    }
     for (const c of res.headers.getSetCookie?.() || []) {
       const [pair] = c.split(';');
       const eq = pair.indexOf('=');
@@ -33,7 +39,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
 
   async function json(url) {
     const r = await request(url);
-    if (r.status !== 200) throw new YahooError(`Yahoo answered ${r.status}`, r.status);
+    if (r.status !== 200) throw Object.assign(new YahooError(`Yahoo Finance answered HTTP ${r.status}`, r.status), { http: r.status });
     try {
       return JSON.parse(r.text);
     } catch {
@@ -224,11 +230,18 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     cashflow: ['OperatingCashFlow', 'CapitalExpenditure', 'FreeCashFlow', 'DepreciationAndAmortization', 'StockBasedCompensation', 'InvestingCashFlow', 'RepurchaseOfCapitalStock', 'CashDividendsPaid', 'FinancingCashFlow'],
   };
 
+  // Extra line items fetched with the statements but not shown in FA's tables: Meridian's
+  // fallback for figures the SEC data lacks (server/fundamentals.mjs).
+  const EXTRA = ['OtherShortTermInvestments', 'Goodwill', 'OtherIntangibleAssets', 'PreferredStock'];
+  // The "trailing" series (last 12 months) exist only for income and cash-flow items.
+  const TRAILING = [...STATEMENTS.income, ...STATEMENTS.cashflow];
+
   // { periods: ['2022-09-30', ...] (oldest first), rows: { TotalRevenue: { '2022-09-30': 3.9e11 } } }
+  // freq: 'annual', 'quarterly' or 'trailing' (last 12 months, at each quarter end).
   async function statements(symbol, freq) {
-    const f = freq === 'quarterly' ? 'quarterly' : 'annual';
+    const f = freq === 'quarterly' || freq === 'trailing' ? freq : 'annual';
     return cached(`stmt:${symbol}:${f}`, 6 * 60 * 60e3, async () => {
-      const types = Object.values(STATEMENTS).flat().map((t) => f + t).join(',');
+      const types = (f === 'trailing' ? TRAILING : [...Object.values(STATEMENTS).flat(), ...EXTRA]).map((t) => f + t).join(',');
       const now = Math.floor(Date.now() / 1000);
       const make = (crumb) => `${Q2}/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${now - 7 * 365 * 86400}&period2=${now + 86400}${crumb ? `&crumb=${encodeURIComponent(crumb)}` : ''}`;
       let data;
@@ -246,7 +259,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         // the values sit under a key named after the type (fall back to any other array)
         const items = (type && r[type]) || Object.entries(r).find(([k, v]) => k !== 'meta' && k !== 'timestamp' && Array.isArray(v))?.[1] || [];
         if (!type) continue;
-        const name = type.replace(/^(annual|quarterly)/, '');
+        const name = type.replace(/^(annual|quarterly|trailing)/, '');
         for (const it of items) {
           const v = raw(it?.reportedValue);
           if (!it?.asOfDate || v == null) continue;
@@ -255,7 +268,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
           periods.add(it.asOfDate);
         }
       }
-      if (!periods.size) throw new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404);
+      if (!periods.size) throw Object.assign(new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404), { http: 'empty' });
       return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency, layout: STATEMENTS };
     });
   }

@@ -7,6 +7,7 @@
   --text: #d7dbe2;
   --dim: #7c8594;
   --accent: #ffa028;
+  --warn: #f2c94c;
   --accent-ink: #1a1000;
   --up: #2fd47a;
   --down: #ff5468;
@@ -32,6 +33,7 @@
   --text: #15181d;
   --dim: #646c7a;
   --accent: #c76a00;
+  --warn: #8a6d00;
   --accent-ink: #fff;
   --up: #0a8a48;
   --down: #c8243a;
@@ -389,3 +391,13 @@ a.doc:hover { text-decoration: underline; }
   .chk-rule input { width: 46px; }
   .chk-tbl td, .chk-tbl th { padding: 3px 4px; }
 }
+
+/* where a number came from: Y (Yahoo), F (Finnhub), S+Y (mixed), FY (not trailing 12 months), n/a (tap for why) */
+.srcm { display: inline-block; margin-left: 3px; padding: 0 3px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: var(--accent); font: 600 9px/13px var(--mono, monospace); cursor: help; vertical-align: 1px; white-space: nowrap; }
+.srcm.mix { color: var(--warn); border-color: currentColor; border-style: dashed; }
+.srcm.fy { color: var(--dim); }
+.srcm.na { margin-left: 0; border: 0; padding: 0; color: var(--dim); font: inherit; text-decoration: underline dotted; text-underline-offset: 2px; vertical-align: baseline; }
+.srcm.warn { margin-left: 0; color: var(--warn); border-color: currentColor; font-size: 9px; white-space: normal; line-height: 12px; max-width: 9em; text-align: center; vertical-align: middle; }
+.srcm:hover, .srcm:focus-visible { border-color: var(--accent); outline: none; }
+.src-line { margin: 0 0 8px; overflow-wrap: anywhere; font-size: 13px; }
+@media (max-width: 900px) { .srcm { font-size: 10px; line-height: 15px; padding: 0 4px; } .srcm.na { font-size: inherit; } }

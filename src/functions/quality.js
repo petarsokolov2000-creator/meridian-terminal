@@ -2,15 +2,17 @@
 // debt load, cash conversion and growth. CAP: what management does with the cash: buybacks or
 // dilution, payouts vs free cash flow, stock-based pay.
 //
-// Data: SEC EDGAR 10-K figures (Yahoo annual statements for non-SEC filers) via /api/annual;
-// beta and the 10-year Treasury from Yahoo. Nothing is estimated: a ratio whose inputs weren't
-// reported is n/a, and each formula is shown with the latest year's inputs. Banks and insurers
+// Data: SEC EDGAR 10-K figures first, then Yahoo and Finnhub for gaps (each fallback cell is
+// marked, see src/sources.js) via /api/annual; beta and the 10-year Treasury from Yahoo. Nothing
+// is estimated: a ratio whose inputs weren't reported is n/a with the reason, and each formula
+// is shown with the latest year's inputs. Banks and insurers
 // get ROE, ROTCE, ROA and the efficiency ratio instead of ROIC, EBITDA and interest coverage.
 
 import { register } from '../registry.js';
 import { num, big, esc, el, dir } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { help } from '../glossary.js';
+import { mark, why, na, srcNote, statusLine } from '../sources.js';
 
 const NA = '<span class="dim">n/a</span>';
 const fin = (v) => v != null && Number.isFinite(v);
@@ -30,16 +32,54 @@ export function cagr(years, key, n) {
   if (ys.length < 2) return { v: null, why: 'not reported' };
   const last = ys[ys.length - 1];
   const first = years.find((y) => y.fy === last.fy - n);
-  if (!first || !fin(first[key])) return { v: null, why: `needs FY${last.fy - n} (${n + 1} fiscal years)` };
+  if (!first || !fin(first[key])) {
+    const reason = first?._y?.na?.[key] || first?.na?.[key];
+    return { v: null, why: reason ? `FY${last.fy - n}: ${reason}` : `needs FY${last.fy - n} (${n + 1} fiscal years)` };
+  }
   if (first[key] <= 0 || last[key] <= 0) return { v: null, why: 'negative or zero at one end' };
   return { v: (last[key] / first[key]) ** (1 / n) - 1, from: first.fy, to: last.fy, a: first[key], b: last[key] };
+}
+
+// The reported figures behind each per-year metric: [this year's, the prior year's (averages)].
+const AVG3 = ['debt', 'equity', 'cashAll'];
+export const Q_INPUTS = {
+  grossMargin: [['grossProfit', 'revenue']], opMargin: [['ebit', 'revenue']], netMargin: [['netIncome', 'revenue']], fcfMargin: [['fcf', 'revenue']],
+  taxRate: [['tax', 'pretax']], ic: [AVG3], icAvg: [AVG3, AVG3], nopat: [['ebit', 'tax', 'pretax']], roic: [['ebit', 'tax', 'pretax', ...AVG3], AVG3],
+  coverage: [['ebit', 'interest']], netDebtEbitda: [['netDebt', 'ebitda']], fcfToNi: [['fcf', 'netIncome']], revenue: [['revenue']], epsDil: [['epsDil']], fcf: [['fcf']],
+};
+export const Q_INPUTS_FIN = {
+  roe: [['netIncome', 'commonEquity'], ['commonEquity']], rotce: [['netIncome', 'tangibleEquity'], ['tangibleEquity']], roa: [['netIncome', 'assets'], ['assets']],
+  efficiency: [['nonInterestExpense', 'revenue']], equityToAssets: [['commonEquity', 'assets']], netMargin: [['netIncome', 'revenue']], bvps: [['commonEquity', 'shares']], epsDil: [['epsDil']], revenue: [['revenue']],
+};
+export const capInputs = (financial) => {
+  const base = financial ? 'netIncome' : 'fcf';
+  return {
+    shares: [['shares']], shareChg: [['shares'], ['shares']], buybacks: [['buybacks']], dividends: [['dividendsPaid']], returnedPct: [['buybacks', 'dividendsPaid', base]],
+    buybackPct: [['buybacks', base]], dividendPct: [['dividendsPaid', base]], sbc: [['sbc']], sbcRevenue: [['sbc', 'revenue']], sbcFcf: [['sbc', 'fcf']], fcfLessSbc: [['fcf', 'sbc']],
+  };
+};
+// why a metric is n/a when every input was reported
+const NULL_WHY = {
+  taxRate: (r) => (r._y?.tax != null && r._y?.pretax != null ? 'the effective tax rate is outside 0–60% (one-off items), so it isn’t used' : null),
+  roic: (r) => (r.taxRate == null && r._y?.tax != null && r._y?.pretax != null ? 'the effective tax rate is outside 0–60%, so ROIC isn’t computed' : null),
+  nopat: (r) => NULL_WHY.roic(r),
+  shareChg: (r) => (!r._p ? 'no prior fiscal year in the data' : r.shares != null ? 'the share count switches between year-end and diluted-average counts here, so the change isn’t comparable' : null),
+};
+
+/** A per-year cell: the value with its source marker, or n/a with the reason. */
+export function qCell(r, key, text, spec) {
+  const v = r[key];
+  const sp = spec?.[key];
+  if (!sp || !r._y) return text;
+  if (v == null || !Number.isFinite(v)) return na(why(r._y, sp[0]) || NULL_WHY[key]?.(r));
+  return `${text}${mark(r._y, sp[0], r._p, sp[1] || [])}`;
 }
 
 /** Per-year quality metrics (operating companies or banks). */
 export function qualityRows(years, financial) {
   return years.map((y, k) => {
     const p = years[k - 1];
-    const r = { fy: y.fy };
+    const r = { fy: y.fy, _y: y, _p: p || null };
     if (financial) {
       const common = fin(y.netIncome) ? y.netIncome - (y.prefDividends ?? 0) : null;
       r.niCommon = common;
@@ -115,6 +155,7 @@ export function capitalRows(years, financial) {
     const base = financial ? y.netIncome : y.fcf;
     const returned = fin(y.buybacks) || fin(y.dividendsPaid) ? (y.buybacks ?? 0) + (y.dividendsPaid ?? 0) : null;
     return {
+      _y: y, _p: p || null,
       fy: y.fy, shares: sh, sharesBasis: y.sharesOut != null ? 'outstanding' : 'diluted average', sharesDil: y.sharesDil,
       shareChg: fin(sh) && fin(psh) && psh > 0 && (y.sharesOut != null) === (p.sharesOut != null) ? sh / psh - 1 : null,
       buybacks: y.buybacks, dividends: y.dividendsPaid, returned, base,
@@ -131,7 +172,7 @@ const ROW_HELP = { icAvg: 'investedCapital', epsDil: 'eps', shares: 'shareCount'
 const CARD_HELP = [[/^ROIC −/, 'wacc'], [/^ROIC/, 'roic'], [/WACC|Cost of capital/, 'wacc'], [/^ROE −|Cost of equity/, 'costOfEquity'], [/^ROE/, 'roe'], [/ROTCE/, 'rotce'], [/Efficiency/, 'efficiency'], [/Interest coverage/, 'coverage'], [/Net debt/, 'netDebtEbitda'], [/FCF \/ net/, 'fcfToNi'], [/growth/i, 'cagr'], [/Share count/, 'shareCount'], [/Returned/, 'returnedPct'], [/FCF after/, 'fcfLessSbc'], [/Stock-based/, 'sbcRevenue']];
 const cardHelp = (label) => CARD_HELP.find(([re]) => re.test(label))?.[1] || null;
 
-function view(ctx, { title, cards, rows, years, formulas, notes }) {
+function view(ctx, { title, cards, rows, years, formulas, notes, spec }) {
   const head = el('div', 'port-head');
   head.innerHTML = cards.map(([a, b, tip]) => `<div${tip ? ` title="${esc(tip)}"` : ''}><span class="dim">${a}${help(cardHelp(a))}</span><b>${b}</b></div>`).join('');
   const table = el('div', 'tbl-wrap');
@@ -144,7 +185,7 @@ function view(ctx, { title, cards, rows, years, formulas, notes }) {
   let sel = rows.find((r) => !r.section)?.key;
   const draw = () => {
     table.innerHTML = `<table class="tbl q-tbl"><thead><tr><th class="l">${esc(title)}</th>${shown.map((y) => `<th class="r">FY${y.fy}</th>`).join('')}</tr></thead><tbody>
-      ${rows.map((r) => (r.section ? `<tr class="q-sec"><td class="l" colspan="${shown.length + 1}">${esc(r.section)}</td></tr>` : `<tr data-k="${r.key}" class="${r.key === sel ? 'self' : ''}" style="cursor:pointer" title="${esc(r.formula)}"><td class="l">${esc(r.label)}${help(ROW_HELP[r.key] || r.key)}</td>${shown.map((y) => `<td class="r ${r.cls ? r.cls(y[r.key]) : ''}">${r.fmt(y[r.key])}</td>`).join('')}</tr>`)).join('')}
+      ${rows.map((r) => (r.section ? `<tr class="q-sec"><td class="l" colspan="${shown.length + 1}">${esc(r.section)}</td></tr>` : `<tr data-k="${r.key}" class="${r.key === sel ? 'self' : ''}" style="cursor:pointer" title="${esc(r.formula)}"><td class="l">${esc(r.label)}${help(ROW_HELP[r.key] || r.key)}</td>${shown.map((y) => `<td class="r ${r.cls ? r.cls(y[r.key]) : ''}">${qCell(y, r.key, r.fmt(y[r.key]), spec)}</td>`).join('')}</tr>`)).join('')}
       </tbody></table>`;
     const r = rows.find((z) => z.key === sel);
     const scale = r.fmt === P ? 100 : 1;
@@ -162,8 +203,16 @@ function view(ctx, { title, cards, rows, years, formulas, notes }) {
   return chart;
 }
 
-const cagrCell = (c) => (fin(c.v) ? `${P(c.v)} <span class="dim small">FY${c.from}–${c.to}</span>` : `${NA} <span class="dim small">${esc(c.why)}</span>`);
-const sourceNote = (a, extra = '') => `Sources: ${esc(a.source)}, latest filing ${esc(a.asOf)}${extra}. Per-share figures and share counts are adjusted for stock splits. "Average" capital uses the start and end of each fiscal year. n/a = the company didn't report an input (or it was negative where a ratio needs a positive number).`;
+const cagrCell = (c, key, src) => {
+  if (!fin(c.v)) return /sources disagree/.test(c.why) ? na(c.why) : `${NA} <span class="dim small">${esc(c.why)}</span>`;
+  const at = (fy) => {
+    const z = src?.find((r) => r.fy === fy);
+    return z?._y || z;
+  };
+  const fields = key === 'bvps' ? ['commonEquity', 'shares'] : [key];
+  return `${P(c.v)}${src ? mark(at(c.to), fields, at(c.from), fields, 'start of the period') : ''} <span class="dim small">FY${c.from}–${c.to}</span>`;
+};
+const sourceNote = (a, extra = '') => `${statusLine(a.status)}<br>Sources: ${esc(a.source)}, latest filing ${esc(a.asOf)}${extra}. Per-share figures and share counts are adjusted for stock splits. "Average" capital uses the start and end of each fiscal year. Tap an n/a for the reason (an input no source reported, a source that failed, or a negative number where a ratio needs a positive one).`;
 
 function load(ctx, what, render) {
   const s = ctx.sec;
@@ -207,16 +256,16 @@ register({
       const tsy = E.get('US10Y');
       const rf = tsy?.last != null ? tsy.last / 100 : null;
       const beta = det?.stats?.beta ?? null;
-      const growth = (key, label, src = years) => [label, `5y ${cagrCell(cagr(src, key, 5))}<br>10y ${cagrCell(cagr(src, key, 10))}`];
+      const growth = (key, label, src = years) => [label, `5y ${cagrCell(cagr(src, key, 5), key, src)}<br>10y ${cagrCell(cagr(src, key, 10), key, src)}`];
       if (financial) {
         const re = fin(beta) && fin(rf) ? rf + beta * 0.05 : null;
         const spread = fin(last.roe) && fin(re) ? last.roe - re : null;
         return view(ctx, {
-          title: 'Bank / insurer', years: q,
+          title: 'Bank / insurer', years: q, spec: Q_INPUTS_FIN,
           cards: [
-            ['ROE (FY' + last.fy + ')', P(last.roe)], ['Cost of equity', fin(re) ? P(re) : NA, 'CAPM: 10-year Treasury + beta × 5% equity risk premium'],
+            ['ROE (FY' + last.fy + ')', qCell(last, 'roe', P(last.roe), Q_INPUTS_FIN)], ['Cost of equity', fin(re) ? P(re) : NA, 'CAPM: 10-year Treasury + beta × 5% equity risk premium'],
             ['ROE − cost of equity', fin(spread) ? `<span class="${dir(spread)}">${spread > 0 ? '+' : ''}${num(spread * 100, 1)} pts</span>` : NA],
-            ['ROTCE', P(last.rotce)], ['Efficiency ratio', P(last.efficiency), 'Non-interest expense ÷ revenue: lower is better'],
+            ['ROTCE', qCell(last, 'rotce', P(last.rotce), Q_INPUTS_FIN)], ['Efficiency ratio', qCell(last, 'efficiency', P(last.efficiency), Q_INPUTS_FIN), 'Non-interest expense ÷ revenue: lower is better'],
             growth('revenue', 'Revenue growth / yr'), growth('epsDil', 'EPS growth / yr'), growth('bvps', 'Book value / share growth / yr', q),
           ],
           rows: [
@@ -233,9 +282,9 @@ register({
             { key: 'bvps', label: 'Book value / share', fmt: N2, formula: 'Common equity ÷ shares outstanding' },
           ],
           formulas: [
-            ['ROE', '(Net income − preferred dividends) ÷ average common equity', `= (${B(y.netIncome)} − ${B(y.prefDividends ?? 0)}) ÷ ${B(last.ceAvg)} (common equity, ${last.avgNote}) = ${P(last.roe)}${y.prefDividends == null ? ' (no preferred dividends reported, so none subtracted)' : ''}`],
+            ['ROE', '(Net income − preferred dividends) ÷ average common equity', `= (${B(y.netIncome)} − ${B(y.prefDividends ?? 0)}) ÷ ${B(last.ceAvg)} (common equity, ${last.avgNote}) = ${P(last.roe)}${y.prefDividends == null ? ' (no preferred dividends reported, so none subtracted)' : ''}${srcNote(y, ['netIncome', 'commonEquity'], last._p, ['commonEquity'])}`],
             ['Cost of equity', '10-year Treasury yield + beta × equity risk premium (5%, an assumption)', fin(re) ? `= ${P(rf, 2)} + ${N2(beta)} × 5% = ${P(re)}` : 'needs beta and the Treasury yield'],
-            ['Efficiency ratio', 'Non-interest expense ÷ revenue', `= ${B(y.nonInterestExpense)} ÷ ${B(y.revenue)} = ${P(last.efficiency)}`],
+            ['Efficiency ratio', 'Non-interest expense ÷ revenue', `= ${B(y.nonInterestExpense)} ÷ ${B(y.revenue)} = ${P(last.efficiency)}${srcNote(y, ['nonInterestExpense', 'revenue'])}`],
             ['Not shown for banks', 'ROIC, EBITDA, interest coverage, net debt / EBITDA and free cash flow', 'For a bank, borrowing and lending is the business itself, so these measures have no meaning.'],
           ],
           notes: sourceNote(a, '; beta and Treasury yield: Yahoo Finance'),
@@ -244,12 +293,12 @@ register({
       const w = wacc(years, { price: s.last, beta, rf });
       const spread = fin(last.roic) && fin(w.v) ? last.roic - w.v : null;
       return view(ctx, {
-        title: 'Operating company', years: q,
+        title: 'Operating company', years: q, spec: Q_INPUTS,
         cards: [
-          [`ROIC (FY${last.fy})`, P(last.roic)], ['Cost of capital (WACC)', fin(w.v) ? P(w.v) : `${NA} <span class="dim small">${esc(w.why)}</span>`],
+          [`ROIC (FY${last.fy})`, qCell(last, 'roic', P(last.roic), Q_INPUTS)], ['Cost of capital (WACC)', fin(w.v) ? P(w.v) : `${NA} <span class="dim small">${esc(w.why)}</span>`],
           ['ROIC − WACC', fin(spread) ? `<span class="${dir(spread)}">${spread > 0 ? '+' : ''}${num(spread * 100, 1)} pts</span>` : NA, 'Positive = the business earns more on its capital than that capital costs'],
-          ['Interest coverage', X(last.coverage), 'EBIT ÷ interest expense: how many times profits cover interest'], ['Net debt / EBITDA', X(last.netDebtEbitda), 'Negative = more cash than debt'],
-          ['FCF / net income', X(last.fcfToNi, 2), 'Above 1 = profits come with at least as much cash'],
+          ['Interest coverage', qCell(last, 'coverage', X(last.coverage), Q_INPUTS), 'EBIT ÷ interest expense: how many times profits cover interest'], ['Net debt / EBITDA', qCell(last, 'netDebtEbitda', X(last.netDebtEbitda), Q_INPUTS), 'Negative = more cash than debt'],
+          ['FCF / net income', qCell(last, 'fcfToNi', X(last.fcfToNi, 2), Q_INPUTS), 'Above 1 = profits come with at least as much cash'],
           growth('revenue', 'Revenue growth / yr'), growth('epsDil', 'EPS growth / yr'), growth('fcf', 'FCF growth / yr'),
         ],
         rows: [
@@ -273,12 +322,12 @@ register({
         ],
         formulas: [
           ['ROIC', 'NOPAT ÷ average invested capital; NOPAT = EBIT × (1 − effective tax rate); invested capital = debt + equity − cash & short-term investments',
-            `= ${B(y.ebit)} × (1 − ${P(last.taxRate)}) ÷ ${B(last.icAvg)} (${esc(last.icNote)}) = ${P(last.roic)}${y.formulas?.ebit && !/^Operating/.test(y.formulas.ebit) ? ` · EBIT = ${esc(y.formulas.ebit.toLowerCase())}` : ''}`],
+            `= ${B(y.ebit)} × (1 − ${P(last.taxRate)}) ÷ ${B(last.icAvg)} (${esc(last.icNote)}) = ${P(last.roic)}${y.formulas?.ebit && !/^Operating/.test(y.formulas.ebit) ? ` · EBIT = ${esc(y.formulas.ebit.toLowerCase())}` : ''}${srcNote(y, Q_INPUTS.roic[0], last._p, Q_INPUTS.roic[1])}`],
           ['WACC', 'E/(D+E) × cost of equity + D/(D+E) × cost of debt × (1 − tax rate)',
             `E = market value ${B(w.E)}, D = debt ${B(w.D)}; cost of equity = ${P(rf, 2)} Treasury + beta ${N2(beta)} × 5% = ${P(w.re)}; cost of debt = interest ÷ average debt = ${P(w.rd)}${w.rdYear && w.rdYear !== y.fy ? ` (from FY${w.rdYear}, the latest year interest was reported)` : ''}; tax ${P(w.t)} → ${fin(w.v) ? P(w.v) : `n/a (${esc(w.why)})`}`],
-          ['Interest coverage', 'EBIT ÷ interest expense', `= ${B(y.ebit)} ÷ ${B(y.interest)} = ${X(last.coverage)}`],
-          ['Net debt / EBITDA', '(Debt − cash & short-term investments) ÷ (EBIT + depreciation & amortization)', `= (${B(y.debt)} − ${B(y.cashAll)}) ÷ ${B(y.ebitda)} = ${X(last.netDebtEbitda)}`],
-          ['FCF / net income', '(Operating cash flow − capex) ÷ net income', `= ${B(y.fcf)} ÷ ${B(y.netIncome)} = ${X(last.fcfToNi, 2)}`],
+          ['Interest coverage', 'EBIT ÷ interest expense', `= ${B(y.ebit)} ÷ ${B(y.interest)} = ${X(last.coverage)}${srcNote(y, ['ebit', 'interest'])}`],
+          ['Net debt / EBITDA', '(Debt − cash & short-term investments) ÷ (EBIT + depreciation & amortization)', `= (${B(y.debt)} − ${B(y.cashAll)}) ÷ ${B(y.ebitda)} = ${X(last.netDebtEbitda)}${srcNote(y, ['netDebt', 'ebitda'])}`],
+          ['FCF / net income', '(Operating cash flow − capex) ÷ net income', `= ${B(y.fcf)} ÷ ${B(y.netIncome)} = ${X(last.fcfToNi, 2)}${srcNote(y, ['fcf', 'netIncome'])}`],
           ['Growth per year (CAGR)', '(Last value ÷ value n years earlier)^(1/n) − 1', '5-year needs 6 fiscal years, 10-year needs 11; n/a if either end is zero or negative'],
         ],
         notes: sourceNote(a, '; beta, Treasury yield and price: Yahoo Finance. Equity risk premium 5% is an assumption. Debt excludes leases'),
@@ -311,12 +360,12 @@ register({
       const fiveBase = c.slice(-5).every((r) => fin(r.base)) ? sum('base', 5) : null;
       const fivePct = fin(fiveBase) && fiveBase > 0 && c.length >= 5 ? sum('returned', 5) / fiveBase : null;
       return view(ctx, {
-        title: 'Capital allocation', years: c,
+        title: 'Capital allocation', years: c, spec: capInputs(financial),
         cards: [
           ['Share count, 5 years', shareTrend(5)], ['Share count, 10 years', shareTrend(10)],
-          [`Returned / ${baseName} (FY${last.fy})`, P(last.returnedPct, 0), `Buybacks + dividends ÷ ${baseName}`],
+          [`Returned / ${baseName} (FY${last.fy})`, qCell(last, 'returnedPct', P(last.returnedPct, 0), capInputs(financial)), `Buybacks + dividends ÷ ${baseName}`],
           [`Returned / ${baseName}, last 5 yrs`, c.length >= 5 ? P(fivePct, 0) : NA],
-          ['Stock-based pay / revenue', P(last.sbcRevenue)], ...(financial ? [] : [['FCF after stock-based pay', B(last.fcfLessSbc), 'Free cash flow − stock-based compensation']]),
+          ['Stock-based pay / revenue', qCell(last, 'sbcRevenue', P(last.sbcRevenue), capInputs(financial))], ...(financial ? [] : [['FCF after stock-based pay', qCell(last, 'fcfLessSbc', B(last.fcfLessSbc), capInputs(financial)), 'Free cash flow − stock-based compensation']]),
         ],
         rows: [
           { section: 'Share count' },
@@ -335,8 +384,8 @@ register({
         ],
         formulas: [
           ['Share count change', 'Shares at year end ÷ shares a year earlier − 1', `FY${last.fy}: ${B(last.shares)} (${esc(last.sharesBasis)}) → ${P(last.shareChg)}`],
-          [`Buybacks + dividends / ${baseName}`, `(Buybacks + dividends) ÷ ${baseName}`, `= (${B(y.buybacks)} + ${B(y.dividendsPaid)}) ÷ ${B(last.base)} = ${P(last.returnedPct, 0)}${financial ? ' (banks: vs net income, since free cash flow has no meaning for them)' : ''}`],
-          ['Stock-based pay / revenue', 'Stock-based compensation ÷ revenue', `= ${B(y.sbc)} ÷ ${B(y.revenue)} = ${P(last.sbcRevenue)}`],
+          [`Buybacks + dividends / ${baseName}`, `(Buybacks + dividends) ÷ ${baseName}`, `= (${B(y.buybacks)} + ${B(y.dividendsPaid)}) ÷ ${B(last.base)} = ${P(last.returnedPct, 0)}${financial ? ' (banks: vs net income, since free cash flow has no meaning for them)' : ''}${srcNote(y, ['buybacks', 'dividendsPaid', financial ? 'netIncome' : 'fcf'])}`],
+          ['Stock-based pay / revenue', 'Stock-based compensation ÷ revenue', `= ${B(y.sbc)} ÷ ${B(y.revenue)} = ${P(last.sbcRevenue)}${srcNote(y, ['sbc', 'revenue'])}`],
           ['Why it matters', 'Above 100% of free cash flow means paying out more than the business generates (funded by debt or cash on hand)', 'Stock-based pay is a real cost: it dilutes shareholders unless buybacks offset it, which is why a falling share count can still hide heavy stock pay.'],
         ],
         notes: sourceNote(a),

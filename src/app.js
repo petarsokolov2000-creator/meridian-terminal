@@ -659,6 +659,18 @@ function installHelp() {
     if (e.key === 'Escape' && !box.hidden) close();
   });
   document.addEventListener('click', (e) => {
+    // a source marker ("Y", "F", "S+Y", "FY") or an n/a: where the number came from, or why it's missing
+    const src = e.target.closest('[data-srcinfo]');
+    if (src) {
+      e.preventDefault();
+      e.stopPropagation();
+      const lines = String(src.dataset.srcinfo || '').split('\n').filter(Boolean);
+      const missing = src.classList.contains('na') || src.classList.contains('warn');
+      body.innerHTML = `<h2>${missing ? 'Why this is missing' : 'Where this number comes from'}</h2>${lines.map((l) => `<p class="src-line">${esc(l)}</p>`).join('')}<p class="dim small">Order of sources: SEC EDGAR first, then Yahoo Finance, then Finnhub. A fallback number is used only if it is within 2% of the SEC's figure in the nearest year both report.</p>`;
+      box.hidden = false;
+      box.querySelector('.close').focus();
+      return;
+    }
     const b = e.target.closest('[data-help]');
     if (!b) return;
     e.preventDefault();

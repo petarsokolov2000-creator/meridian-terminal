@@ -26,13 +26,21 @@ export function createSec({ fetchImpl = fetch } = {}) {
     nextSlot = Math.max(now, nextSlot) + 125;
     if (wait) await new Promise((r) => setTimeout(r, wait));
   };
-  async function json(url) {
+  // Every failure carries the real HTTP status (or "timeout" / "network"), so a panel can say
+  // "SEC EDGAR answered HTTP 403" instead of guessing a reason.
+  const fail = (http, extra = '') => Object.assign(new Error(`SEC EDGAR answered HTTP ${http}${http === 403 ? ' (it refused the request; it limits automated access, so try again in a few minutes)' : http === 429 ? ' (too many requests; try again in a minute)' : ''}${extra}`), { status: http === 404 ? 404 : 502, http, source: 'SEC EDGAR' });
+  async function get(url, accept, timeout) {
     await throttle();
-    const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
-    if (res.status === 403 || res.status === 429) {
-      throw Object.assign(new Error(`the SEC refused the request (${res.status}); it limits automated access, so try again in a few minutes`), { status: 503 });
+    try {
+      return await fetchImpl(url, { headers: { 'user-agent': UA, accept }, signal: AbortSignal.timeout(timeout) });
+    } catch (err) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw Object.assign(new Error(`SEC EDGAR didn't answer within ${timeout / 1000} s (timeout)`), { status: 504, http: 'timeout', source: 'SEC EDGAR' });
+      throw Object.assign(new Error(`SEC EDGAR couldn't be reached (${err?.message || 'network error'})`), { status: 502, http: 'network', source: 'SEC EDGAR' });
     }
-    if (!res.ok) throw Object.assign(new Error(`SEC answered ${res.status}`), { status: res.status });
+  }
+  async function json(url) {
+    const res = await get(url, 'application/json', 20000);
+    if (!res.ok) throw fail(res.status);
     return res.json();
   }
 
@@ -111,10 +119,8 @@ export function createSec({ fetchImpl = fetch } = {}) {
     return { cik, form, filed: r.filingDate?.[i] || null, reportDate: r.reportDate?.[i] || null, url: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/${r.primaryDocument[i]}`, index: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/` };
   });
   const documentText = (url) => cached(`doc:${url}`, 12 * 60 * 60e3, async () => {
-    await throttle();
-    const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'text/html' }, signal: AbortSignal.timeout(60000) });
-    if (res.status === 403 || res.status === 429) throw Object.assign(new Error(`the SEC refused the request (${res.status}); it limits automated access, so try again in a few minutes`), { status: 503 });
-    if (!res.ok) throw Object.assign(new Error(`SEC answered ${res.status}`), { status: res.status });
+    const res = await get(url, 'text/html', 60000);
+    if (!res.ok) throw fail(res.status);
     return res.text();
   });
 

@@ -33,12 +33,19 @@ export function createFinnhub({ getKey, fetchImpl = fetch, WebSocketImpl = globa
     if (calls.length >= 55) throw new FinnhubError('Finnhub rate limit (60 calls/min) reached; try again shortly', 429);
     calls.push(now);
     const qs = new URLSearchParams({ ...params, token: key });
-    const res = await fetchImpl(`${REST}${path}?${qs}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    let res;
+    try {
+      res = await fetchImpl(`${REST}${path}?${qs}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    } catch (err) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw Object.assign(new FinnhubError("Finnhub didn't answer within 15 s (timeout)", 504), { http: 'timeout' });
+      throw Object.assign(new FinnhubError(`Finnhub couldn't be reached (${err?.message || 'network error'})`, 502), { http: 'network' });
+    }
     const text = await res.text();
-    if (res.status === 401) throw new FinnhubError('Finnhub rejected the API key', 401);
-    if (res.status === 403) throw new FinnhubError("Your Finnhub plan doesn't include this data", 403);
-    if (res.status === 429) throw new FinnhubError('Finnhub rate limit reached', 429);
-    if (!res.ok) throw new FinnhubError(`Finnhub answered ${res.status}`, res.status);
+    const http = (e) => Object.assign(e, { http: res.status });
+    if (res.status === 401) throw http(new FinnhubError('Finnhub rejected the API key (HTTP 401)', 401));
+    if (res.status === 403) throw http(new FinnhubError("Finnhub answered HTTP 403: your plan doesn't include this data", 403));
+    if (res.status === 429) throw http(new FinnhubError('Finnhub answered HTTP 429: rate limit reached', 429));
+    if (!res.ok) throw http(new FinnhubError(`Finnhub answered HTTP ${res.status}`, res.status));
     try {
       return JSON.parse(text);
     } catch {
@@ -68,6 +75,11 @@ export function createFinnhub({ getKey, fetchImpl = fetch, WebSocketImpl = globa
       if (!Number.isFinite(q?.c)) throw new FinnhubError('Finnhub answered without a price', 502);
       return true;
     },
+
+    // Financial statements exactly as filed with the SEC ("as reported"; free plan), one entry
+    // per 10-K or 10-Q with its XBRL concepts: Meridian's third source for annual figures.
+    reported: (symbol, freq = 'annual') => cached(`rep:${symbol}:${freq}`, 12 * 60 * 60e3, async () => (await rest('/stock/financials-reported', { symbol, freq })).data || []),
+    configured: () => !!getKey(),
 
     news: (category) => cached(`news:${category}`, 3 * 60e3, async () => (await rest('/news', { category })).map(story)),
     companyNews: (symbol) => cached(`cnews:${symbol}`, 5 * 60e3, async () => (await rest('/company-news', { symbol, from: day(-7), to: day(0) })).slice(0, 40).map(story)),

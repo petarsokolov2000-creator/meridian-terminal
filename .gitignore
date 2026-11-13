@@ -7,3 +7,6 @@ Meridian.exe.old
 Meridian.ico
 *.keystore
 *.jks
+
+# test screenshots
+/*.png

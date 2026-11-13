@@ -6,6 +6,7 @@ import { PriceChart, XYChart, fmtVol } from '../chart.js';
 import { logReturns, diffs, linreg, corr } from '../studies.js';
 import { Rng, hashString } from '../rng.js';
 import { SESSION_MIN } from '../engine.js';
+import { help } from '../glossary.js';
 
 const CLS_NAME = { EQ: 'Equity', IDX: 'Index', FX: 'Currency', CMDTY: 'Commodity', CRYPTO: 'Crypto', BOND: 'Govt bond' };
 
@@ -49,7 +50,7 @@ register({
       if (s.cls === 'EQ') {
         const cap = s.shares * s.last;
         facts.push(kv('Market cap', `${big(cap)} ${s.ccy}`), kv('Shares out', big(s.shares)), kv('P/E (ttm)', num(s.last / s.eps, 1)), kv('EPS (ttm)', num(s.eps, 2)),
-          kv('Dividend yield', `${num(s.divYield, 2)}%`), `<div class="kv" title="Calculated by Meridian from the past year of daily returns against the S&P 500. Yahoo's figure in KEYS uses 5 years of monthly returns, so the two differ."><span>Beta · 1Y daily vs S&amp;P 500</span><b>${num(s.histBeta, 2)}</b></div>`, kv('Sector', esc(s.sector)), kv('Region', s.region),
+          kv('Dividend yield', `${num(s.divYield, 2)}%`), `<div class="kv" title="Calculated by Meridian from the past year of daily returns against the S&P 500. Yahoo's figure in KEYS uses 5 years of monthly returns, so the two differ."><span>Beta · 1Y daily vs S&amp;P 500${help('beta1y')}</span><b>${num(s.histBeta, 2)}</b></div>`, kv('Sector', esc(s.sector)), kv('Region', s.region),
           kv('Next earnings', s.earnings?.date ? `${s.earnings.date} ${s.earnings.when}` : '—'), kv('Avg daily vol', big(s.adv)));
       } else if (s.cls === 'BOND') {
         facts.push(kv('Country', s.country), kv('Tenor', s.tenor), kv('Yield', `${num(s.last, 3)}%`), kv('Change', signed(s.chgBp, 1, 'bp'), dir(s.chg)), kv('Currency', s.ccy));

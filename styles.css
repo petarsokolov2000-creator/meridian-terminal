@@ -367,3 +367,25 @@ a.doc:hover { text-decoration: underline; }
 .risk-list h3 { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: 0.04em; margin: 10px 0 4px; }
 .risk-item { padding: 3px 0; border-bottom: 1px dotted var(--line); line-height: 1.45; }
 @media (max-width: 900px) { .seg-col { display: none; } }
+
+/* "?" definitions */
+.qhelp { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 4px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--dim); font: 600 9px/1 var(--mono, monospace); cursor: help; vertical-align: 1px; }
+.qhelp:hover, .qhelp:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.help-card { max-width: 520px; }
+.help-card b { font-weight: 600; }
+@media (max-width: 900px) { .qhelp { width: 18px; height: 18px; font-size: 10px; } }
+
+/* CHECK */
+.chk-tbl td.chk-label { white-space: normal; min-width: 220px; }
+.chk-tbl .chk-sub { display: none; margin-top: 2px; }
+.chk-tbl .chk-detail { white-space: normal; min-width: 180px; }
+.chk-rule input { width: 58px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 1px 4px; font: inherit; text-align: right; }
+.chk-res { font-size: 15px; font-weight: 700; text-align: center; }
+.chk-risks { margin: 4px 0 4px 18px; padding: 0; line-height: 1.5; }
+@media (max-width: 900px) {
+  .chk-tbl td.chk-label { min-width: 0; width: 46%; }
+  .chk-tbl .chk-sub { display: block; }
+  .chk-tbl .chk-detail, .chk-tbl th:last-child { display: none; }
+  .chk-rule input { width: 46px; }
+  .chk-tbl td, .chk-tbl th { padding: 3px 4px; }
+}

@@ -10,6 +10,7 @@
 import { register } from '../registry.js';
 import { num, big, esc, el, dir } from '../fmt.js';
 import { XYChart } from '../chart.js';
+import { help } from '../glossary.js';
 
 const NA = '<span class="dim">n/a</span>';
 const fin = (v) => v != null && Number.isFinite(v);
@@ -125,9 +126,14 @@ export function capitalRows(years, financial) {
 
 // ---- shared view: summary cards, a years × metrics table, a chart, formulas -----------------
 
+// which "?" belongs to each row and summary card
+const ROW_HELP = { icAvg: 'investedCapital', epsDil: 'eps', shares: 'shareCount', shareChg: 'shareCount', dividends: 'payout', buybackPct: 'returnedPct', dividendPct: 'returnedPct', sbcFcf: 'sbc' };
+const CARD_HELP = [[/^ROIC −/, 'wacc'], [/^ROIC/, 'roic'], [/WACC|Cost of capital/, 'wacc'], [/^ROE −|Cost of equity/, 'costOfEquity'], [/^ROE/, 'roe'], [/ROTCE/, 'rotce'], [/Efficiency/, 'efficiency'], [/Interest coverage/, 'coverage'], [/Net debt/, 'netDebtEbitda'], [/FCF \/ net/, 'fcfToNi'], [/growth/i, 'cagr'], [/Share count/, 'shareCount'], [/Returned/, 'returnedPct'], [/FCF after/, 'fcfLessSbc'], [/Stock-based/, 'sbcRevenue']];
+const cardHelp = (label) => CARD_HELP.find(([re]) => re.test(label))?.[1] || null;
+
 function view(ctx, { title, cards, rows, years, formulas, notes }) {
   const head = el('div', 'port-head');
-  head.innerHTML = cards.map(([a, b, tip]) => `<div${tip ? ` title="${esc(tip)}"` : ''}><span class="dim">${a}</span><b>${b}</b></div>`).join('');
+  head.innerHTML = cards.map(([a, b, tip]) => `<div${tip ? ` title="${esc(tip)}"` : ''}><span class="dim">${a}${help(cardHelp(a))}</span><b>${b}</b></div>`).join('');
   const table = el('div', 'tbl-wrap');
   const host = el('div', 'chart-host short val-chart');
   const f = el('div', 'val-formulas');
@@ -138,7 +144,7 @@ function view(ctx, { title, cards, rows, years, formulas, notes }) {
   let sel = rows.find((r) => !r.section)?.key;
   const draw = () => {
     table.innerHTML = `<table class="tbl q-tbl"><thead><tr><th class="l">${esc(title)}</th>${shown.map((y) => `<th class="r">FY${y.fy}</th>`).join('')}</tr></thead><tbody>
-      ${rows.map((r) => (r.section ? `<tr class="q-sec"><td class="l" colspan="${shown.length + 1}">${esc(r.section)}</td></tr>` : `<tr data-k="${r.key}" class="${r.key === sel ? 'self' : ''}" style="cursor:pointer" title="${esc(r.formula)}"><td class="l">${esc(r.label)}</td>${shown.map((y) => `<td class="r ${r.cls ? r.cls(y[r.key]) : ''}">${r.fmt(y[r.key])}</td>`).join('')}</tr>`)).join('')}
+      ${rows.map((r) => (r.section ? `<tr class="q-sec"><td class="l" colspan="${shown.length + 1}">${esc(r.section)}</td></tr>` : `<tr data-k="${r.key}" class="${r.key === sel ? 'self' : ''}" style="cursor:pointer" title="${esc(r.formula)}"><td class="l">${esc(r.label)}${help(ROW_HELP[r.key] || r.key)}</td>${shown.map((y) => `<td class="r ${r.cls ? r.cls(y[r.key]) : ''}">${r.fmt(y[r.key])}</td>`).join('')}</tr>`)).join('')}
       </tbody></table>`;
     const r = rows.find((z) => z.key === sel);
     const scale = r.fmt === P ? 100 : 1;

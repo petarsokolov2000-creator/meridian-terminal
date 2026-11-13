@@ -15,6 +15,8 @@ import './functions/supply.js';
 import './functions/valuation.js';
 import './functions/quality.js';
 import './functions/business.js';
+import './functions/check.js';
+import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [
   { cmd: 'OVER', link: 'A' },
@@ -628,6 +630,7 @@ async function boot() {
   window.meridian = engine; // handy for poking at the data from devtools
   document.getElementById('boot-screen').remove();
   window.app = new App();
+  installHelp();
   if (reason) window.app.toast(reason, 'err');
   if (engine.mode === 'live') window.app.checkUpdate(false);
   if (engine.mode === 'live') engine.on('quotes', () => window.app.status());
@@ -638,3 +641,32 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('boot-msg').textContent = `Meridian could not start: ${err.message}`;
   });
 });
+
+// "?" next to a metric: its definition, formula and a rough typical range, in a small popup.
+// Caught before any other click handler, so a "?" inside a clickable table row doesn't select it.
+function installHelp() {
+  const box = document.createElement('div');
+  box.className = 'modal';
+  box.hidden = true;
+  box.innerHTML = '<div class="story help-card" role="dialog" aria-modal="true"><button class="close" aria-label="Close">✕</button><div class="help-body"></div></div>';
+  document.body.appendChild(box);
+  const body = box.querySelector('.help-body');
+  const close = () => (box.hidden = true);
+  box.addEventListener('click', (e) => {
+    if (e.target === box || e.target.closest('.close')) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !box.hidden) close();
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-help]');
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const g = GLOSSARY[b.dataset.help];
+    if (!g) return;
+    body.innerHTML = `<h2>${esc(g.name)}</h2><p>${esc(g.what)}</p><p><span class="dim">Formula</span><br><b>${esc(g.formula)}</b></p>${g.typical ? `<p><span class="dim">Typical values (rough guide; varies by industry)</span><br>${esc(g.typical)}</p>` : ''}`;
+    box.hidden = false;
+    box.querySelector('.close').focus();
+  }, true);
+}

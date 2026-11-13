@@ -9,6 +9,7 @@
 import { register } from '../registry.js';
 import { num, big, esc, el, dir, store, save } from '../fmt.js';
 import { XYChart } from '../chart.js';
+import { help } from '../glossary.js';
 
 const NA = '<span class="dim">n/a</span>';
 const x = (v, dp = 1) => (v == null || !Number.isFinite(v) ? NA : `${num(v, dp)}×`);
@@ -63,7 +64,7 @@ register({
       const head = el('div', 'port-head');
       head.innerHTML = [
         ['Price', `${num(cur.price, 2)} ${esc(v.priceCurrency || '')}`],
-        ['Market value', cur.marketCap ? big(cur.marketCap) : NA],
+        [`Market value${help('marketCap')}`, cur.marketCap ? big(cur.marketCap) : NA],
         ['Fiscal year used', `FY${v.latestFy} <span class="dim">(ended ${v.latestEnd})</span>`],
         ['Industry (SEC)', v.profile?.sic ? `${v.profile.sic} · ${esc(v.profile.sicDescription || '')}` : NA],
         ['Treated as', v.financial ? 'bank / insurer' : 'operating company'],
@@ -99,11 +100,11 @@ register({
         return `<span class="${cheap ? 'up' : 'down'}" title="${cheap ? 'cheaper' : 'more expensive'} than the reference">${d > 0 ? '+' : ''}${num(d * 100, 0)}%</span>`;
       };
       const drawTable = () => {
-        table.innerHTML = `<table class="tbl val-tbl"><thead><tr><th class="l">Metric</th><th class="r">Now</th><th class="r">5y median</th><th class="r">5y range</th><th class="r">10y median</th><th class="r">10y range</th><th class="r">Peer median</th><th class="r" title="Now vs the 5-year median (green = cheaper)">vs 5y</th><th class="r" title="Now vs the peer median (green = cheaper)">vs peers</th></tr></thead><tbody>
+        table.innerHTML = `<table class="tbl val-tbl"><thead><tr><th class="l">Metric</th><th class="r">Now</th><th class="r">5y median${help('median5y')}</th><th class="r">5y range</th><th class="r">10y median</th><th class="r">10y range</th><th class="r">Peer median${help('peers')}</th><th class="r" title="Now vs the 5-year median (green = cheaper)">vs 5y</th><th class="r" title="Now vs the peer median (green = cheaper)">vs peers</th></tr></thead><tbody>
           ${keys.map((k) => {
             const st = v.stats[k];
             const win = (w, n) => (w.short ? NA : `${fmt(k, w.median)}${w.n < n ? ` <span class="dim small" title="Only ${w.n} of the last ${n} fiscal years had every input for this multiple">${w.n}/${n} yrs</span>` : ''}`);
-            return `<tr data-k="${k}" class="${k === sel ? 'self' : ''}" style="cursor:pointer"><td class="l">${METRICS[k][0]}</td><td class="r"><b>${fmt(k, cur[k])}</b></td>
+            return `<tr data-k="${k}" class="${k === sel ? 'self' : ''}" style="cursor:pointer"><td class="l">${METRICS[k][0]}${help(k)}</td><td class="r"><b>${fmt(k, cur[k])}</b></td>
               <td class="r">${win(st.y5, 5)}</td><td class="r">${range({ ...st.y5, k })}</td><td class="r">${win(st.y10, 10)}</td><td class="r">${range({ ...st.y10, k })}</td>
               <td class="r">${peerState.data ? fmt(k, peerMedian(k)) : '<span class="dim">…</span>'}</td><td class="r">${st.y5.short ? NA : vs(cur[k], st.y5.median, k)}</td><td class="r">${vs(cur[k], peerMedian(k), k)}</td></tr>`;
           }).join('')}</tbody></table>`;
@@ -344,7 +345,7 @@ register({
       const P = (v2) => (v2 == null ? '' : (v2 * 100).toFixed(1));
       const drawForm = () => {
         form.innerHTML = `<table class="tbl"><thead><tr><th class="l">Assumption</th><th class="r">Bear</th><th class="r">Base</th><th class="r">Bull</th><th class="l">Default comes from</th></tr></thead><tbody>
-          ${[['growth', 'Revenue growth, years 1–5 (%/yr)'], ['margin', 'Free-cash-flow margin (% of revenue)'], ['discount', 'Discount rate (%)'], ['terminal', 'Terminal growth after year 10 (%)']].map(([k, label]) => `<tr><td class="l">${label}</td>
+          ${[['growth', 'Revenue growth, years 1–5 (%/yr)', 'growthAssumption'], ['margin', 'Free-cash-flow margin (% of revenue)', 'fcfMarginAssumption'], ['discount', 'Discount rate (%)', 'discountRate'], ['terminal', 'Terminal growth after year 10 (%)', 'terminalGrowth']].map(([k, label, hk]) => `<tr><td class="l">${label}${help(hk)}</td>
             ${['bear', 'base', 'bull'].map((sc) => `<td class="r"><input type="number" step="0.1" inputmode="decimal" data-sc="${sc}" data-k="${k}" value="${P(scen[sc][k])}" placeholder="n/a"></td>`).join('')}
             <td class="l dim small">${esc(d.notes[k])}</td></tr>`).join('')}
           </tbody></table><div class="val-add"><button class="tb" data-reset>Reset to defaults</button> <span class="dim small">Bear/bull start at base ∓3 pts growth, ∓2 pts margin, ±1 pt discount rate. Years 6–10: growth fades in a straight line to terminal growth.</span></div>`;
@@ -373,9 +374,9 @@ register({
       };
       const drawOut = () => {
         const R = Object.fromEntries(['bear', 'base', 'bull'].map((k) => [k, run(scen[k])]));
-        out.innerHTML = [['Price', num(price, 2)], ...['bear', 'base', 'bull'].map((k) => [`${k[0].toUpperCase()}${k.slice(1)} fair value`, `${fv(R[k])} <span class="dim small">margin of safety</span> ${mos(R[k])}${R[k].error ? ` <span class="dim small">(${esc(R[k].error)})</span>` : ''}`])]
+        out.innerHTML = [['Price', num(price, 2)], ...['bear', 'base', 'bull'].map((k) => [`${k[0].toUpperCase()}${k.slice(1)} fair value`, `${fv(R[k])} <span class="dim small">margin of safety${help('marginOfSafety')}</span> ${mos(R[k])}${R[k].error ? ` <span class="dim small">(${esc(R[k].error)})</span>` : ''}`])]
           .map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('') +
-          `<div><span class="dim">Terminal value share of base value</span><b>${R.base.error ? NA : `${num(R.base.tvShare * 100, 0)}%`}</b></div>`;
+          `<div><span class="dim">Terminal value share of base value${help('terminalShare')}</span><b>${R.base.error ? NA : `${num(R.base.tvShare * 100, 0)}%`}</b></div>`;
         // sensitivity of the base case: discount rate × terminal growth
         const b = scen.base;
         const dr = b.discount == null ? [] : [-0.02, -0.01, 0, 0.01, 0.02].map((o) => b.discount + o);
@@ -391,7 +392,7 @@ register({
           <tr><td class="l">Terminal</td><td class="r">${num(b.terminal * 100, 1)}%</td><td></td><td class="r">${big(R.base.tv)}</td><td class="r">${big(R.base.pvTv)}</td></tr></tbody></table>`;
       };
       notes.innerHTML = `<h3>Method and inputs</h3><table class="tbl small"><tbody>
-        <tr><td class="l"><b>Fair value / share</b></td><td class="l val-formula">(Σ PV of free cash flow, years 1–10 + PV of terminal value − net debt) ÷ shares<br><span class="dim">PV = cash flow ÷ (1 + discount rate)^year · terminal value = FCF year 10 × (1 + terminal growth) ÷ (discount rate − terminal growth)</span></td></tr>
+        <tr><td class="l"><b>Fair value / share</b>${help('dcf')}</td><td class="l val-formula">(Σ PV of free cash flow, years 1–10 + PV of terminal value − net debt) ÷ shares<br><span class="dim">PV = cash flow ÷ (1 + discount rate)^year · terminal value = FCF year 10 × (1 + terminal growth) ÷ (discount rate − terminal growth)</span></td></tr>
         <tr><td class="l"><b>Margin of safety</b></td><td class="l val-formula">(Fair value − price) ÷ fair value · positive = price below fair value</td></tr>
         <tr><td class="l">Starting revenue</td><td class="l">${big(d.revenue0)} <span class="dim">(${esc(d.notes.revenue0)})</span></td></tr>
         <tr><td class="l">Net debt</td><td class="l">${d.netDebt == null ? NA : big(d.netDebt)} <span class="dim">(${esc(d.notes.netDebt)})</span></td></tr>

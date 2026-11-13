@@ -1,0 +1,108 @@
+// Definitions behind every "?" in Meridian: what a metric means, how it's calculated and a rough
+// guide to typical values. Typical ranges are rules of thumb that vary a lot by industry and
+// era, and are labelled as such wherever they're shown.
+
+export const GLOSSARY = {
+  // ---- valuation
+  pe: { name: 'P/E (price to earnings)', what: 'How many dollars investors pay for one dollar of yearly profit.', formula: 'Share price ÷ diluted earnings per share', typical: 'The S&P 500 has mostly traded between about 15× and 25×. Fast growers sit higher, cyclical or troubled companies lower. Meaningless when earnings are negative (n/a).' },
+  fpe: { name: 'Forward P/E', what: 'P/E on analysts’ estimate of next year’s earnings instead of last year’s actual earnings.', formula: 'Share price ÷ estimated EPS for the next fiscal year', typical: 'Usually below the trailing P/E for a growing company. Only as good as the estimates.' },
+  peg: { name: 'PEG ratio', what: 'P/E adjusted for expected growth.', formula: 'P/E ÷ expected annual EPS growth (in %)', typical: 'Around 1 is often called fair, below 1 cheap for its growth. Depends heavily on the growth estimate.' },
+  evEbitda: { name: 'EV / EBITDA', what: 'What the whole business costs (shares plus debt, minus cash) per dollar of operating profit before depreciation. Lets you compare companies with different amounts of debt.', formula: '(Market value + debt − cash & short-term investments) ÷ (EBIT + depreciation & amortization)', typical: 'Often 8–15× for mature companies, higher for fast growers. Doesn’t apply to banks and insurers.' },
+  ev: { name: 'Enterprise value', what: 'The price of the whole business: what you would pay to buy all the shares and take on the debt, minus the cash you would get.', formula: 'Market value + debt − cash & short-term investments', typical: 'Above market value for indebted companies, below it for cash-rich ones.' },
+  ps: { name: 'P / S (price to sales)', what: 'Market value per dollar of revenue. Useful when earnings are negative or swing a lot.', formula: 'Market value ÷ revenue', typical: 'About 1–3× for low-margin businesses (retail, industry), 5–15× or more for high-margin software. Compare within an industry.' },
+  pb: { name: 'P / B (price to book)', what: 'Market value per dollar of shareholders’ equity on the balance sheet. Most useful for banks and insurers, whose assets are mostly financial.', formula: 'Market value ÷ (shareholders’ equity − preferred stock)', typical: 'Banks often trade around 1–2× book. Below 1× means the market doubts the book value or the returns on it.' },
+  ptbv: { name: 'P / TBV (price to tangible book)', what: 'Like P/B but without goodwill and other intangibles, which a bank couldn’t sell in a crisis.', formula: 'Market value ÷ (common equity − goodwill − other intangibles)', typical: 'Large US banks mostly 1–2.5×.' },
+  pfcf: { name: 'P / FCF (price to free cash flow)', what: 'Market value per dollar of cash the business generated after investing in itself.', formula: 'Market value ÷ (operating cash flow − capital expenditure)', typical: 'Roughly 15–25× for quality mature companies. n/a when free cash flow is negative.' },
+  fcfYield: { name: 'FCF yield', what: 'Free cash flow as a percentage of market value: the cash “return” the business generates on its price. The inverse of P/FCF.', formula: '(Operating cash flow − capital expenditure) ÷ market value', typical: '4–6% is often seen as reasonable for a mature company. A useful comparison is the 10-year Treasury yield.' },
+  divYield: { name: 'Dividend yield', what: 'Yearly dividends as a percentage of the share price.', formula: 'Dividends per share (12 months or fiscal year) ÷ share price', typical: 'The S&P 500 has yielded roughly 1.2–2% in recent years. A very high yield can signal that the market expects a cut.' },
+  marketCap: { name: 'Market value (market cap)', what: 'What all the company’s shares are worth at today’s price.', formula: 'Share price × shares outstanding', typical: 'Large cap: over about $10B; mega cap: over $200B.' },
+  median5y: { name: '5-year / 10-year median and range', what: 'The middle value and the lowest–highest value of a multiple at the last 5 or 10 fiscal year ends. Shows whether today’s price is high or low versus the company’s own history.', formula: 'Multiple at each fiscal year end = price that day ÷ that year’s figures', typical: 'A multiple far above its own range can mean the market expects better times, or that the stock is expensive. n/a when there are fewer years of data than the window.' },
+  peers: { name: 'Peers', what: 'Companies in Meridian’s list with the same official SEC industry code (SIC), to compare multiples within an industry.', formula: 'Same 4-digit SIC code, else the same 3- or 2-digit group; you can add or remove peers', typical: 'Peer medians are only as good as the peer set: check that the companies really do the same thing.' },
+
+  // ---- DCF
+  dcf: { name: 'Discounted cash flow (DCF)', what: 'What a business is worth today if its future free cash flows turn out as assumed, with later cash worth less than cash now.', formula: 'Σ FCF in year t ÷ (1 + discount rate)^t for 10 years + terminal value, − net debt, ÷ shares', typical: 'Highly sensitive to the discount rate and terminal growth: treat the result as a range, not a number.' },
+  discountRate: { name: 'Discount rate', what: 'The yearly return an investor requires; future cash is divided by (1 + rate) for each year it lies ahead.', formula: 'Default: cost of equity = 10-year Treasury + beta × equity risk premium', typical: 'About 7–11% for large US companies. Higher = lower value.' },
+  terminalGrowth: { name: 'Terminal growth', what: 'How fast free cash flow grows forever after year 10.', formula: 'Terminal value = FCF in year 10 × (1 + g) ÷ (discount rate − g)', typical: '2–3%, about long-run nominal economic growth. Must be below the discount rate; above about 4% is hard to justify.' },
+  fcfMarginAssumption: { name: 'Free-cash-flow margin (DCF assumption)', what: 'The share of revenue that becomes free cash flow in the projection.', formula: 'Default: median FCF ÷ revenue of the last 5 fiscal years', typical: 'Most companies 5–15%, very profitable ones 25%+.' },
+  growthAssumption: { name: 'Revenue growth (DCF assumption)', what: 'How fast revenue grows in years 1–5 of the projection; it then fades to terminal growth by year 10.', formula: 'Default: the company’s 5-year revenue growth per year', typical: 'Mature companies grow roughly with the economy (3–6% nominal). Sustaining 15%+ for a decade is rare.' },
+  marginOfSafety: { name: 'Margin of safety', what: 'How far the price is below the estimated fair value: the cushion against mistakes in the assumptions.', formula: '(Fair value − price) ÷ fair value', typical: 'Value investors often want 20–30%+. Negative = the price is above the estimate.' },
+  terminalShare: { name: 'Terminal value share', what: 'How much of the DCF value comes from cash flows after year 10.', formula: 'PV of terminal value ÷ (PV of years 1–10 + PV of terminal value)', typical: 'Often 50–80%. The higher it is, the more the result rests on long-run guesses.' },
+
+  // ---- quality
+  roic: { name: 'ROIC (return on invested capital)', what: 'The after-tax operating profit a business earns on all the money tied up in it (from shareholders and lenders). The core sign of a good business.', formula: 'EBIT × (1 − tax rate) ÷ average (debt + equity − cash & short-term investments)', typical: 'Above about 15% for many years often signals a competitive advantage (moat). Below the cost of capital, growth destroys value. Not meaningful for banks.' },
+  nopat: { name: 'NOPAT', what: 'Net operating profit after tax: operating profit as if the company had no debt.', formula: 'EBIT × (1 − effective tax rate)', typical: '' },
+  investedCapital: { name: 'Invested capital', what: 'The money tied up in running the business, from shareholders and lenders, minus spare cash.', formula: 'Debt + shareholders’ equity − cash & short-term investments', typical: 'Can be very small (or negative) for companies that buy back a lot of stock, which makes ROIC look huge.' },
+  wacc: { name: 'WACC (cost of capital)', what: 'The average yearly return shareholders and lenders require, weighted by how much of each the company uses.', formula: 'E/(D+E) × cost of equity + D/(D+E) × cost of debt × (1 − tax rate)', typical: 'Typically 6–10% for large US companies.' },
+  costOfEquity: { name: 'Cost of equity', what: 'The return shareholders require for the risk of owning the stock.', formula: 'CAPM: 10-year Treasury yield + beta × equity risk premium', typical: 'About 8–11% for most large companies today.' },
+  costOfDebt: { name: 'Cost of debt', what: 'The interest rate the company pays on its borrowing.', formula: 'Interest expense ÷ average debt', typical: 'Close to Treasury yields plus 0.5–3 points, depending on credit quality.' },
+  erp: { name: 'Equity risk premium', what: 'The extra return investors want for owning stocks instead of Treasury bonds. Can’t be observed, only estimated.', formula: 'Meridian assumes 5%', typical: 'Common estimates range from about 4% to 6%.' },
+  grossMargin: { name: 'Gross margin', what: 'What is left of each sales dollar after the direct cost of making the product or delivering the service.', formula: 'Gross profit ÷ revenue', typical: 'Software 70–90%, consumer brands 40–60%, retailers 20–35%, refiners under 10%. Stability matters as much as level.' },
+  opMargin: { name: 'Operating margin', what: 'Profit from the business itself, before interest and tax, per sales dollar.', formula: 'Operating income (EBIT) ÷ revenue', typical: 'The S&P 500 averages roughly 10–15%; above 20% is high.' },
+  netMargin: { name: 'Net margin', what: 'Final profit per sales dollar, after everything including interest and tax.', formula: 'Net income ÷ revenue', typical: 'S&P 500 roughly 8–13%.' },
+  fcfMargin: { name: 'FCF margin', what: 'Free cash flow per sales dollar.', formula: '(Operating cash flow − capital expenditure) ÷ revenue', typical: 'Above 10% is strong for most industries.' },
+  taxRate: { name: 'Effective tax rate', what: 'The share of pre-tax profit actually paid (or charged) as income tax that year.', formula: 'Income tax ÷ pre-tax income', typical: 'US statutory rate 21%; large companies often 12–25%. One-off items can swing it.' },
+  coverage: { name: 'Interest coverage', what: 'How many times operating profit covers the interest bill.', formula: 'EBIT ÷ interest expense', typical: 'Above about 8× comfortable, below about 3× tight. Not meaningful for banks.' },
+  netDebtEbitda: { name: 'Net debt / EBITDA', what: 'How many years of operating profit (before depreciation) it would take to repay net debt.', formula: '(Debt − cash & short-term investments) ÷ EBITDA', typical: 'Under 1× low, 1–3× moderate, above 3× high for most industries. Negative = more cash than debt.' },
+  netDebt: { name: 'Net debt', what: 'Debt minus cash and short-term investments.', formula: 'Debt − cash & short-term investments (leases not included)', typical: 'Negative = net cash.' },
+  ebitda: { name: 'EBITDA', what: 'Operating profit before depreciation and amortization: a rough measure of cash earnings from operations.', formula: 'EBIT + depreciation & amortization', typical: 'Ignores the cost of replacing equipment, so it flatters capital-heavy businesses.' },
+  ebit: { name: 'EBIT', what: 'Earnings before interest and tax: operating profit.', formula: 'Operating income (or pre-tax income + interest expense when no operating income is reported)', typical: '' },
+  fcf: { name: 'Free cash flow (FCF)', what: 'Cash the business generates after paying for the investment it needs: what’s available for buybacks, dividends, debt repayment or acquisitions.', formula: 'Operating cash flow − capital expenditure', typical: 'Stock-based pay isn’t subtracted, which flatters companies that pay heavily in stock.' },
+  fcfToNi: { name: 'FCF / net income (cash conversion)', what: 'Whether reported profits come with matching cash.', formula: 'Free cash flow ÷ net income', typical: 'Around 1 or higher is healthy; persistently below about 0.8 deserves a look.' },
+  cagr: { name: 'Growth per year (CAGR)', what: 'The steady yearly growth rate that would take a value from its starting level to its end level.', formula: '(End value ÷ start value)^(1 ÷ years) − 1', typical: 'Needs positive values at both ends. 5-year needs 6 fiscal years; 10-year needs 11.' },
+  revenue: { name: 'Revenue', what: 'Total sales.', formula: 'As reported in the income statement', typical: '' },
+  eps: { name: 'Diluted EPS', what: 'Net income per share, counting shares that options and convertibles could add.', formula: 'Net income available to common ÷ diluted average shares (adjusted for splits)', typical: '' },
+  roe: { name: 'ROE (return on equity)', what: 'Profit earned on shareholders’ money. The main return measure for banks.', formula: '(Net income − preferred dividends) ÷ average common equity', typical: 'Banks: 10–15% typical; above the cost of equity (about 10%) creates value. Can be inflated by debt for non-banks.' },
+  rotce: { name: 'ROTCE', what: 'Return on tangible common equity: ROE without goodwill and intangibles in the base.', formula: '(Net income − preferred dividends) ÷ average tangible common equity', typical: 'Large US banks roughly 12–20% in good years.' },
+  roa: { name: 'ROA (return on assets)', what: 'Profit per dollar of assets.', formula: 'Net income ÷ average total assets', typical: 'Banks around 1% is solid; above 1.3% is strong.' },
+  efficiency: { name: 'Efficiency ratio', what: 'How much a bank spends to earn a dollar of revenue. Lower is better.', formula: 'Non-interest expense ÷ revenue (net of interest expense)', typical: 'Below about 60% is efficient; 50–55% is good for a large bank.' },
+  equityToAssets: { name: 'Common equity / assets', what: 'How much of a bank’s assets are funded by shareholders rather than deposits and debt: a simple measure of its cushion.', formula: 'Common equity ÷ total assets', typical: 'Large US banks roughly 7–10%. (Regulators use risk-weighted ratios such as CET1, not shown here.)' },
+  bvps: { name: 'Book value per share', what: 'Shareholders’ equity per share.', formula: 'Common equity ÷ shares outstanding', typical: 'Steady growth in book value plus dividends is the core of a bank’s long-term return.' },
+
+  // ---- capital allocation
+  shareCount: { name: 'Share count', what: 'Shares outstanding. Falling = buybacks are shrinking it, so each share owns more of the company; rising = dilution.', formula: 'Shares at year end (split-adjusted) ÷ a year earlier − 1', typical: 'Many large companies shrink the count 1–3% a year; fast-growing tech companies often dilute 1–3%.' },
+  buybacks: { name: 'Buybacks', what: 'Cash spent repurchasing the company’s own shares.', formula: 'As reported in the cash flow statement', typical: 'Only create value when the price paid is below what the shares are worth.' },
+  returnedPct: { name: 'Returned / FCF', what: 'How much of free cash flow went back to shareholders as buybacks and dividends.', formula: '(Buybacks + dividends) ÷ free cash flow (÷ net income for banks)', typical: 'Above 100% for long means paying out more than the business generates (funded by debt or cash).' },
+  payout: { name: 'Payout ratio', what: 'Dividends as a share of earnings.', formula: 'Dividends ÷ net income', typical: 'Under about 60% is usually sustainable; above 100% can’t last.' },
+  sbc: { name: 'Stock-based compensation', what: 'Pay given in shares or options. Not cash, but a real cost: it dilutes shareholders.', formula: 'Share-based compensation expense (cash flow statement)', typical: '' },
+  sbcRevenue: { name: 'Stock-based pay / revenue', what: 'How heavily the company pays its people in stock.', formula: 'Stock-based compensation ÷ revenue', typical: 'Under about 3% modest; many tech companies 10–20%.' },
+  fcfLessSbc: { name: 'FCF after stock-based pay', what: 'Free cash flow as if stock pay had been paid in cash.', formula: 'Free cash flow − stock-based compensation', typical: 'A stricter measure of the cash a business really generates for owners.' },
+
+  // ---- business, risk, funds
+  segmentShare: { name: 'Segment share', what: 'Each part’s share of total revenue, from the company’s own tagged figures in its 10-K.', formula: 'Segment revenue ÷ total revenue', typical: 'Heavy dependence on one product or region is a risk worth knowing about.' },
+  customerConcentration: { name: 'Customer concentration', what: 'Revenue that depends on single large customers.', formula: 'A customer’s revenue ÷ total revenue (as tagged in the 10-K)', typical: 'US rules require disclosure of any customer at 10% or more. Several such customers is a risk.' },
+  riskFactors: { name: 'Risk factors', what: 'The risks the company itself lists in Item 1A of its annual report.', formula: 'Headings of Item 1A in the latest 10-K', typical: 'Every company lists many; what is new compared with last year is often most telling.' },
+  expenseRatio: { name: 'Expense ratio', what: 'The yearly fee a fund takes from your investment.', formula: 'Annual fund costs ÷ fund assets', typical: 'Broad index ETFs about 0.03–0.20%; active funds often 0.5–1% or more.' },
+  overlap: { name: 'ETF overlap', what: 'How much of your money in two funds sits in the same stocks.', formula: 'Σ over shared holdings of the smaller of the two weights', typical: 'Meridian only sees each fund’s top 10, so read it as a minimum. Above about 50% means the two funds largely duplicate each other.' },
+  sectorOverlap: { name: 'Sector overlap', what: 'How similar two funds’ sector mixes are.', formula: 'Σ over sectors of the smaller of the two weights', typical: '100% = identical sector mix.' },
+
+  // ---- key statistics
+  beta5y: { name: 'Beta (5Y monthly, Yahoo)', what: 'How much the stock has moved with the market: 1 = like the market, 2 = twice as much, 0.5 = half.', formula: 'Regression slope of 5 years of monthly stock returns on market returns', typical: 'Most large stocks 0.6–1.5.' },
+  beta1y: { name: 'Beta (1Y daily vs S&P 500, Meridian)', what: 'The same idea as Yahoo’s beta, measured over the last year of daily returns, so it reflects recent behaviour.', formula: 'Covariance(stock, S&P 500 daily log returns) ÷ variance(S&P 500)', typical: 'Can differ a lot from the 5-year figure.' },
+  debtToEquity: { name: 'Debt / equity', what: 'Borrowing relative to shareholders’ equity.', formula: 'Total debt ÷ shareholders’ equity', typical: 'Under 100% moderate for most industries; can be huge or meaningless when equity is tiny because of buybacks.' },
+  currentRatio: { name: 'Current ratio', what: 'Short-term assets versus bills due within a year.', formula: 'Current assets ÷ current liabilities', typical: 'Above 1 means short-term assets cover short-term bills; some strong companies run below 1.' },
+  quickRatio: { name: 'Quick ratio', what: 'Like the current ratio, without inventory.', formula: '(Current assets − inventory) ÷ current liabilities', typical: 'Above about 1 comfortable.' },
+  shortFloat: { name: 'Short % of float', what: 'Share of tradable shares sold short: a measure of bets against the stock.', formula: 'Shares sold short ÷ float', typical: 'Under 5% normal; above about 10–20% high.' },
+  daysToCover: { name: 'Days to cover', what: 'How many days of normal trading it would take short sellers to buy back their shares.', formula: 'Shares short ÷ average daily volume', typical: 'Above about 5 days is high.' },
+  roeKeys: { name: 'Return on equity (Yahoo)', what: 'Yahoo’s trailing-12-month ROE.', formula: 'Net income ÷ shareholders’ equity', typical: 'See ROE. Huge values usually mean equity is tiny after buybacks.' },
+};
+
+// labels used on screen that map to an entry
+const ALIAS = {
+  'P/E': 'pe', 'P/E (trailing)': 'pe', 'P/E (ttm)': 'pe', 'P/E (forward)': 'fpe', 'PEG ratio': 'peg', 'EV / EBITDA': 'evEbitda', 'Enterprise value': 'ev', 'P / S': 'ps', 'Price / sales': 'ps',
+  'P / B': 'pb', 'Price / book': 'pb', 'P / TBV': 'ptbv', 'P / FCF': 'pfcf', 'FCF yield': 'fcfYield', 'Dividend yield': 'divYield', 'Market cap': 'marketCap', 'Market value': 'marketCap',
+  'Gross margin': 'grossMargin', 'Operating margin': 'opMargin', 'Profit margin': 'netMargin', 'Net margin': 'netMargin', 'FCF margin': 'fcfMargin', 'Return on equity': 'roeKeys', 'Return on assets': 'roa',
+  'Debt / equity (total debt ÷ equity)': 'debtToEquity', 'Current ratio': 'currentRatio', 'Quick ratio': 'quickRatio', 'Short % of float': 'shortFloat', 'Days to cover': 'daysToCover',
+  'Free cash flow': 'fcf', 'Payout ratio': 'payout', 'Beta · 5Y monthly (Yahoo)': 'beta5y', 'Beta · 1Y daily vs S&amp;P 500 (Meridian)': 'beta1y', 'EV / revenue': 'ev',
+  'Revenue growth (yoy)': 'cagr', 'Earnings growth (yoy)': 'cagr', 'EPS (trailing)': 'eps', 'EPS (forward)': 'fpe',
+};
+
+export function helpKey(keyOrLabel) {
+  if (GLOSSARY[keyOrLabel]) return keyOrLabel;
+  return ALIAS[keyOrLabel] || null;
+}
+
+/** A small "?" button; the app shows the definition when it's clicked. Empty if there's no entry. */
+export function help(keyOrLabel) {
+  const k = helpKey(keyOrLabel);
+  return k ? `<button class="qhelp" type="button" data-help="${k}" aria-label="What is ${GLOSSARY[k].name.replace(/"/g, '')}?">?</button>` : '';
+}

@@ -7,6 +7,7 @@
 
 import { register } from '../registry.js';
 import { num, big, esc, el, dir, store, save } from '../fmt.js';
+import { help } from '../glossary.js';
 
 const NA = '<span class="dim">n/a</span>';
 const fin = (v) => v != null && Number.isFinite(v);
@@ -71,7 +72,7 @@ register({
         const rows = d[tab];
         const sum = rows.reduce((a, r) => a + (r.values[last] ?? 0), 0);
         const prevEnd = ends[ends.length - 2];
-        body.innerHTML = `<table class="tbl seg-tbl"><thead><tr><th class="l">${esc(tabs.find((t) => t[0] === tab)[1])}</th>${ends.map((e) => `<th class="r">FY ${esc(e.slice(0, 4))}</th>`).join('')}<th class="r">Share</th><th class="l seg-col"></th><th class="r">Growth</th></tr></thead><tbody>
+        body.innerHTML = `<table class="tbl seg-tbl"><thead><tr><th class="l">${esc(tabs.find((t) => t[0] === tab)[1])}</th>${ends.map((e) => `<th class="r">FY ${esc(e.slice(0, 4))}</th>`).join('')}<th class="r">Share${help('segmentShare')}</th><th class="l seg-col"></th><th class="r">Growth</th></tr></thead><tbody>
           ${rows.map((r) => {
             const v = r.values[last];
             const share = fin(v) && fin(total) && total ? v / total : null;
@@ -88,7 +89,7 @@ register({
         draw();
       });
       draw();
-      cust.innerHTML = `<h3>Customer concentration</h3>${d.customers.length
+      cust.innerHTML = `<h3>Customer concentration${help('customerConcentration')}</h3>${d.customers.length
         ? `<table class="tbl"><thead><tr><th class="l">Customer (as named in the filing)</th><th class="r">Share of revenue</th><th class="l seg-col"></th></tr></thead><tbody>${d.customers.map((c) => `<tr><td class="l">${esc(c.customer)}</td><td class="r">${P(c.share)}</td><td class="l seg-col">${bar(c.share)}</td></tr>`).join('')}</tbody></table><p class="note">Companies usually don't name these customers; "Customer A" is how the filing tags them.</p>`
         : '<p class="note">No customer concentration is tagged in this 10-K. US rules require disclosing any single customer that accounts for 10% or more of revenue, so this usually means there is none; a few companies describe it only in the text.</p>'}`;
       note.innerHTML = `Source: ${esc(d.source)}, ${filingLink(d.filing)}. Each figure is the company's own tagged revenue (${esc(d.revenueTag || '')}) for a full fiscal year, broken down along the axis the filing uses; labels are derived from the tag names (hover a row for the tag). Up to three fiscal years: the ones the 10-K itself covers.`;
@@ -108,7 +109,7 @@ register({
     return deferredView(ctx, ctx.engine.risks(s.sym), 'Reading Item 1A of the latest 10-K from the SEC…', (d) => {
       const head = el('div', 'port-head');
       const items = d.headings.filter((h) => !h.group).length;
-      head.innerHTML = [['Filing', filingLink(d.filing)], ['Risk headings found', d.unsupported ? NA : String(items)]].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
+      head.innerHTML = [['Filing', filingLink(d.filing)], [`Risk headings found${help('riskFactors')}`, d.unsupported ? NA : String(items)]].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
       const filt = el('div', 'val-add', '<input placeholder="Filter headings (e.g. china, debt, AI)" data-q style="width:260px">');
       const list = el('div', 'risk-list');
@@ -166,7 +167,7 @@ register({
       const head = el('div', 'port-head');
       head.innerHTML = [
         ['Fund', esc(f.name)], ['Issuer', esc(f.family || 'n/a')], ['Category', esc(f.category || 'n/a')],
-        ['Expense ratio', fin(f.expenseRatio) ? `${num(f.expenseRatio * 100, f.expenseRatio < 0.001 ? 4 : 2)}% <span class="dim small">= $${num(f.expenseRatio * 10000, 2)} a year per $10,000</span>` : NA],
+        [`Expense ratio${help('expenseRatio')}`, fin(f.expenseRatio) ? `${num(f.expenseRatio * 100, f.expenseRatio < 0.001 ? 4 : 2)}% <span class="dim small">= $${num(f.expenseRatio * 10000, 2)} a year per $10,000</span>` : NA],
         ['Category average', fin(f.expenseRatioCategory) ? `${num(f.expenseRatioCategory * 100, 2)}%` : NA], ['Fund assets', fin(f.totalAssets) ? big(f.totalAssets) : NA], ['Yield', P(f.yield, 2)],
       ].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
@@ -194,7 +195,7 @@ register({
         const sw = new Map(g.sectors.map((x) => [x.sector, x.weight]));
         const sectorOverlap = f.sectors.length && g.sectors.length ? f.sectors.reduce((a, x) => a + Math.min(x.weight, sw.get(x.sector) ?? 0), 0) : null;
         ov.innerHTML = `<h3>Overlap with ${esc(sym)} <span class="dim">· ${esc(g.name)}</span></h3>
-          <div class="port-head"><div><span class="dim">Holdings overlap (top 10s only)</span><b>at least ${P(o.total)}</b></div><div><span class="dim">Sector overlap</span><b>${P(sectorOverlap)}</b></div><div><span class="dim">Shared top holdings</span><b>${o.common.length}</b></div><div><span class="dim">${esc(sym)} expense ratio</span><b>${fin(g.expenseRatio) ? `${num(g.expenseRatio * 100, g.expenseRatio < 0.001 ? 4 : 2)}%` : NA}</b></div></div>
+          <div class="port-head"><div><span class="dim">Holdings overlap (top 10s only)${help('overlap')}</span><b>at least ${P(o.total)}</b></div><div><span class="dim">Sector overlap${help('sectorOverlap')}</span><b>${P(sectorOverlap)}</b></div><div><span class="dim">Shared top holdings</span><b>${o.common.length}</b></div><div><span class="dim">${esc(sym)} expense ratio</span><b>${fin(g.expenseRatio) ? `${num(g.expenseRatio * 100, g.expenseRatio < 0.001 ? 4 : 2)}%` : NA}</b></div></div>
           ${o.common.length ? `<table class="tbl"><thead><tr><th class="l">Shared holding</th><th class="r">${esc(s.sym)}</th><th class="r">${esc(sym)}</th><th class="r">Overlap</th></tr></thead><tbody>${o.common.map((c) => `<tr><td class="l">${esc(c.symbol || c.name)}</td><td class="r">${P(c.a, 2)}</td><td class="r">${P(c.b, 2)}</td><td class="r">${P(Math.min(c.a, c.b), 2)}</td></tr>`).join('')}</tbody></table>` : '<p class="note">None of their top holdings are the same.</p>'}
           <p class="note">Overlap = Σ over shared holdings of the smaller of the two weights (the share of money that sits in the same stocks). Yahoo publishes only each fund's top 10 holdings (${P(top)} of ${esc(s.sym)}, ${P(g.holdings.reduce((a, h) => a + h.weight, 0))} of ${esc(sym)}), so the true overlap can only be higher: read it as a minimum. Sector overlap uses complete sector weights.</p>
           <div class="val-add"><input placeholder="Other ETF" data-vs maxlength="12"> <button class="tb" data-go>Compare</button> <button class="tb" data-clear>Clear</button></div>`;

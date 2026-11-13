@@ -7,6 +7,7 @@ import { register, FUNCTIONS } from '../registry.js';
 import { num, big, pct, signed, dir, esc, el } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { deferred, strip, kv } from './live-fns.js';
+import { help } from '../glossary.js';
 
 const needsReal = (what) => (ctx) => {
   ctx.el.innerHTML = `<div class="empty">${esc(what)} needs real company data. Switch with <kbd>MODE LIVE</kbd> (Meridian has to be running from its icon).</div>`;
@@ -231,7 +232,7 @@ register({
         ['Price & trend', [['Beta · 5Y monthly (Yahoo)', num(k.beta, 2)], ['Beta · 1Y daily vs S&amp;P 500 (Meridian)', num(s.histBeta, 2)], ['52-week change', pc(k.change52)], ['52-week range', `${num(k.low52, 2)} – ${num(k.high52, 2)}`], ['50-day average', `${num(k.ma50, 2)} (${vsMa(k.ma50)})`], ['200-day average', `${num(k.ma200, 2)} (${vsMa(k.ma200)})`]]],
         ['Dividends & dates', [['Dividend / share', num(k.dividendRate, 2)], ['Dividend yield', pc(k.dividendYield, 2)], ['5-yr avg yield', k.avgYield5y == null ? '—' : `${num(k.avgYield5y, 2)}%`], ['Payout ratio', pc(k.payoutRatio)], ['Ex-dividend date', date(k.exDividend)], ['Last split', k.lastSplit ? `${esc(k.lastSplit)} (${date(k.lastSplitDate)})` : '—'], ['Fiscal year end', date(k.fiscalYearEnd)], ['Latest quarter', date(k.mostRecentQuarter)]]],
       ];
-      host.innerHTML = `<div class="keys">${groups.map(([title, rows]) => `<div class="pane"><h3>${title}</h3><div class="facts">${rows.map(([a, b]) => kv(a, b)).join('')}</div></div>`).join('')}</div><p class="note">Source: Yahoo Finance (quoteSummary), as of ${new Date().toISOString().slice(0, 10)}; the latest reported quarter is shown under Dividends &amp; dates. Short interest is reported twice a month. The two betas differ because they measure different periods: Yahoo uses 5 years of monthly returns, Meridian 1 year of daily returns against the S&amp;P 500.</p>`;
+      host.innerHTML = `<div class="keys">${groups.map(([title, rows]) => `<div class="pane"><h3>${title}</h3><div class="facts">${rows.map(([a, b]) => kv(`${a}${help(a)}`, b)).join('')}</div></div>`).join('')}</div><p class="note">Source: Yahoo Finance (quoteSummary), as of ${new Date().toISOString().slice(0, 10)}; the latest reported quarter is shown under Dividends &amp; dates. Short interest is reported twice a month. The two betas differ because they measure different periods: Yahoo uses 5 years of monthly returns, Meridian 1 year of daily returns against the S&amp;P 500.</p>`;
     }).catch((err) => (host.innerHTML = `<div class="empty">Couldn't load statistics: ${esc(err.message)}</div>`));
     host.innerHTML = '<div class="empty">Loading…</div>';
     return { update: head };

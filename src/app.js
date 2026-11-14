@@ -7,7 +7,7 @@ import { FUNCTIONS, resolve } from './registry.js';
 import { esc, px, chgText, dir, store, save, el } from './fmt.js';
 import './functions/market.js';
 import './functions/security.js';
-import { trade, checkAlerts } from './functions/tools.js';
+import { trade, checkAlerts, collectBackgroundAlerts } from './functions/tools.js';
 import './functions/live-fns.js';
 import './functions/fundamentals.js';
 import './functions/backtest.js';
@@ -16,6 +16,8 @@ import './functions/valuation.js';
 import './functions/quality.js';
 import './functions/business.js';
 import './functions/check.js';
+import './functions/status.js';
+import './functions/compare.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [
@@ -249,6 +251,10 @@ class App {
       location.reload();
       return;
     }
+
+    // "AAPL MSFT COMPARE" or "AAPL COMPARE MSFT": every ticker around the word goes to COMPARE.
+    const ci = up.findIndex((t, k) => k > 0 && resolve(t)?.code === 'COMPARE');
+    if (ci > 0 && !up.slice(0, ci).some((t) => resolve(t))) return this.show(panel, resolve('COMPARE'), null, toks.filter((_, k) => k !== ci));
 
     // Security + function in either order: "ARCX CHART 1Y", "CHART ARCX", "ARCX".
     let def = resolve(up[0]);
@@ -634,6 +640,10 @@ async function boot() {
   if (reason) window.app.toast(reason, 'err');
   if (engine.mode === 'live') window.app.checkUpdate(false);
   if (engine.mode === 'live') engine.on('quotes', () => window.app.status());
+  // Phone app: alerts it triggered while Meridian was closed, now and whenever it comes back to the front.
+  const collect = () => collectBackgroundAlerts(engine, (m, k) => window.app.toast(m, k));
+  collect();
+  document.addEventListener('visibilitychange', () => !document.hidden && collect());
 }
 
 window.addEventListener('DOMContentLoaded', () => {

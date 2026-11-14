@@ -7,6 +7,11 @@
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Price alerts: notifications, and a background check about every 15 minutes while an alert
+       is waiting (a JobScheduler job that needs a network connection and survives a restart). -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
   <application
       android:label="@string/app_name"
@@ -28,5 +33,11 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+
+    <!-- Only Android itself may start this (BIND_JOB_SERVICE is a system permission). -->
+    <service
+        android:name=".AlertJob"
+        android:exported="true"
+        android:permission="android.permission.BIND_JOB_SERVICE" />
   </application>
 </manifest>

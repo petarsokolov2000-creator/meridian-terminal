@@ -6,6 +6,7 @@
 //   keyStore        { get(id), set(id, value|null) } for the Finnhub/FRED keys
 //   historyStore    { read(day), write(day, data) } for the day's history cache
 //   currentVersion  async () => the installed version string
+//   hostInfo        async () => what STATUS shows about where Meridian runs (PC: the update log)
 
 import { createYahoo, pool } from './yahoo.mjs';
 import { createFinnhub } from './finnhub.mjs';
@@ -39,7 +40,7 @@ const needSym = (q) => {
 // Any well-formed Yahoo symbol: the built-in list plus whatever tickers the user added.
 const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) => oneSym(s)).slice(0, 320);
 
-export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket, keyStore, historyStore, kvStore = null, currentVersion, universe, mock = false, log = console.warn }) {
+export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket, keyStore, historyStore, kvStore = null, currentVersion, hostInfo = null, universe, mock = false, log = console.warn }) {
   const opts = { fetchImpl };
   const yahoo = createYahoo(opts);
   const finnhub = createFinnhub({ getKey: () => keyStore.get('finnhub'), ...opts, WebSocketImpl });
@@ -106,6 +107,67 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     }
     const latest = latestCache.latest;
     return { current, latest, updateAvailable: !!(current && latest && latest !== current) };
+  }
+
+  // ---- STATUS: a fresh test of every data source, with the real answer of each --------------
+
+  const CHECKS = [
+    { id: 'yahoo-prices', name: 'Yahoo Finance · price history', used: 'Charts, the watchlist and every price', run: () => yahoo.probe.prices() },
+    { id: 'yahoo-quotes', name: 'Yahoo Finance · live quotes', used: 'Prices that refresh every few seconds', run: () => yahoo.probe.quotes(), ifFails: 'Meridian then reads prices from the chart data instead, which is slower.' },
+    { id: 'yahoo-financials', name: 'Yahoo Finance · company financials', used: 'FA, KEYS, EPS, HOLD, PEERS margins; fills gaps in VAL, QUAL, CHECK', run: () => yahoo.probe.financials() },
+    { id: 'sec-list', name: 'SEC EDGAR · company list (www.sec.gov)', used: 'Needed before any SEC figure; also FILE, SEG, RISK', run: () => sec.probe.list() },
+    { id: 'sec-figures', name: 'SEC EDGAR · reported figures (data.sec.gov)', used: 'VAL, DCF, QUAL, CAP, CHECK, COMPARE', run: () => sec.probe.figures(), ifFails: 'Those screens then use Yahoo (about 4 years of history instead of 10+).' },
+    { id: 'finnhub', key: 'finnhub', name: 'Finnhub · real-time price', used: 'Real-time trades, news summaries, earnings estimates', run: () => finnhub.probe.quote() },
+    { id: 'finnhub-financials', key: 'finnhub', name: 'Finnhub · financial statements', used: 'Third source for older years in VAL and QUAL', run: () => finnhub.probe.reported() },
+    { id: 'fred', key: 'fred', name: 'FRED · US economic data', used: 'ECO', run: async () => (await fred.check()) && 'the key works' },
+    { id: 'treasury', name: 'US Treasury · yield curve', used: 'CURVE, GOVT and US yields', run: async () => `curve of ${(await rates.treasury()).rows.at(-1).date}` },
+    { id: 'ecb', name: 'ECB · euro yield curve', used: 'CURVE (euro area)', run: async () => (await rates.ecb()) && 'answered' },
+    {
+      id: 'github', name: 'GitHub · Meridian updates', used: 'UPDATE and the automatic update',
+      run: async () => {
+        const res = await fetchImpl(`https://raw.githubusercontent.com/${REPO}/main/VERSION?t=${Date.now()}`, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw Object.assign(new Error(`GitHub answered HTTP ${res.status}`), { http: res.status });
+        const v = (await res.text()).trim().slice(0, 40);
+        if (!v) throw Object.assign(new Error('GitHub answered without a version number'), { http: 'empty' });
+        return { detail: `newest published version: ${v}`, latest: v };
+      },
+    },
+  ];
+  const httpOf = (err) => err?.http ?? (err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : Number.isFinite(err?.status) ? err.status : 'network');
+
+  async function runCheck(c) {
+    const base = { id: c.id, name: c.name, used: c.used };
+    if (c.key && !keyStore.get(c.key)) return { ...base, state: 'off', detail: `no ${KEYS[c.key].label} key set (optional). Add one with ${c.key.toUpperCase()} <key>.` };
+    const t0 = Date.now();
+    try {
+      const limit = new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("didn't answer within 30 s (timeout)"), { http: 'timeout' })), 30e3));
+      const r = await Promise.race([c.run(), limit]);
+      return { ...base, state: 'ok', ms: Date.now() - t0, detail: typeof r === 'string' ? r : r?.detail || 'answered', ...(r?.latest ? { latest: r.latest } : {}) };
+    } catch (err) {
+      return { ...base, state: 'failed', ms: Date.now() - t0, http: httpOf(err), error: String(err?.message || err).slice(0, 300), ifFails: c.ifFails || null };
+    }
+  }
+
+  let diagCache = null;
+  function diag() {
+    // a second panel (or a double tap) within 10 s shares the same run
+    if (diagCache && Date.now() - diagCache.at < 10e3) return diagCache.p;
+    const p = (async () => {
+      const [checks, current, host] = await Promise.all([
+        Promise.all(CHECKS.map(runCheck)),
+        currentVersion().catch(() => null),
+        hostInfo ? hostInfo().catch((err) => ({ error: err.message })) : null,
+      ]);
+      const latest = checks.find((c) => c.id === 'github')?.latest || null;
+      return {
+        at: new Date().toISOString(), mock,
+        version: { current, latest, updateAvailable: !!(current && latest && latest !== current) },
+        keys: Object.fromEntries(Object.keys(KEYS).map((k) => [k, !!keyStore.get(k)])),
+        checks, host,
+      };
+    })();
+    diagCache = { at: Date.now(), p };
+    return p;
   }
 
   let moreCache = null;
@@ -182,6 +244,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     },
     '/api/fred/status': async () => ({ configured: !!keyStore.get('fred') }),
     '/api/version': async () => versionInfo(),
+    '/api/diag': async () => diag(),
     '/api/fred/economy': async () => fred.economy(),
     '/api/finnhub/news': async (q) => finnhub.news(['general', 'forex', 'crypto', 'merger'].includes(q.get('category')) ? q.get('category') : 'general'),
     '/api/finnhub/company-news': async (q) => finnhub.companyNews(needSym(q)),

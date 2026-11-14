@@ -203,7 +203,7 @@ function view(ctx, { title, cards, rows, years, formulas, notes, spec }) {
   return chart;
 }
 
-const cagrCell = (c, key, src) => {
+export const cagrCell = (c, key, src) => {
   if (!fin(c.v)) return /sources disagree/.test(c.why) ? na(c.why) : `${NA} <span class="dim small">${esc(c.why)}</span>`;
   const at = (fy) => {
     const z = src?.find((r) => r.fy === fy);

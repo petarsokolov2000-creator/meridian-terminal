@@ -3,8 +3,12 @@ package com.meridian.terminal;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
@@ -49,13 +53,17 @@ import java.util.zip.ZipInputStream;
  * data from a web page (CORS), so the backend's requests go through {@link NetBridge}, which
  * makes them natively and answers via window.__meridianNetDone(id, json). Only the data
  * sources Meridian uses are allowed.
+ *
+ * {@link AppBridge} (window.AndroidApp) is for price alerts: notifications, and the alerts the
+ * app checks by itself while Meridian is closed (see {@link Alerts}). It also tells the page's
+ * STATUS screen what the app knows about its own updates.
  */
 public class MainActivity extends Activity {
 
     private static final String HOST = "localhost";
     private static final String START = "https://" + HOST + "/";
     private static final String REPO = "petarsokolov2000-creator/meridian-terminal";
-    private static final String UA =
+    static final String UA =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36";
     private static final Pattern ALLOWED = Pattern.compile(
             "^(query1\\.finance\\.yahoo\\.com|query2\\.finance\\.yahoo\\.com|fc\\.yahoo\\.com"
@@ -101,6 +109,7 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
         web.addJavascriptInterface(new NetBridge(), "AndroidNet");
+        web.addJavascriptInterface(new AppBridge(), "AndroidApp");
         web.setWebViewClient(new AppClient());
         setContentView(web);
 
@@ -115,6 +124,127 @@ public class MainActivity extends Activity {
                 checkForUpdate();
             }
         });
+        // Alerts left waiting keep being checked while the app is closed.
+        Alerts.schedule(getApplicationContext());
+    }
+
+    // ---- price alerts and app information for the page ---------------------------------------
+
+    private static final int ASK_NOTIFICATIONS = 41;
+
+    /** window.AndroidApp: every method is called by Meridian's own page (src/notify.js). */
+    private class AppBridge {
+        /** What the app knows about itself, as JSON (STATUS shows it). */
+        @JavascriptInterface
+        public String info() {
+            try {
+                SharedPreferences p = Alerts.prefs(MainActivity.this);
+                String apk = "";
+                try {
+                    apk = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                } catch (PackageManager.NameNotFoundException ignored) {
+                    // leave it empty
+                }
+                JSONObject update = new JSONObject().put("at", p.getLong("updateAt", 0)).put("result", p.getString("updateResult", ""));
+                JSONObject alerts = new JSONObject()
+                        .put("count", Alerts.waiting(MainActivity.this))
+                        .put("lastCheck", p.getLong("alertCheckAt", 0))
+                        .put("lastResult", p.getString("alertCheckResult", ""))
+                        .put("job", p.getString("jobState", ""));
+                return new JSONObject()
+                        .put("apk", apk)
+                        .put("android", Build.VERSION.RELEASE)
+                        .put("sdk", Build.VERSION.SDK_INT)
+                        .put("web", installedVersion())
+                        .put("bundled", bundledVersion())
+                        .put("notify", Alerts.permission(MainActivity.this))
+                        .put("battery", Alerts.battery(MainActivity.this))
+                        .put("update", update)
+                        .put("alerts", alerts)
+                        .toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        @JavascriptInterface
+        public void syncAlerts(String json) {
+            Alerts.sync(getApplicationContext(), json);
+        }
+
+        @JavascriptInterface
+        public String takeFired() {
+            return Alerts.takeFired(getApplicationContext());
+        }
+
+        @JavascriptInterface
+        public boolean showNotification(String id, String title, String body) {
+            return Alerts.show(getApplicationContext(), id, title, body);
+        }
+
+        /** Asks Android for permission to notify; the answer goes to window.__meridianNotify(state). */
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Alerts.NOTIFY_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+                        Alerts.prefs(MainActivity.this).edit().putBoolean("askedNotify", true).apply();
+                        requestPermissions(new String[] {Alerts.NOTIFY_PERMISSION}, ASK_NOTIFICATIONS);
+                    } else {
+                        tellPage("__meridianNotify", Alerts.permission(MainActivity.this));
+                    }
+                }
+            });
+        }
+
+        /** Runs the background check right now; its one-line result goes to window.__meridianAlertCheck(text). */
+        @JavascriptInterface
+        public void checkAlertsNow() {
+            pool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    tellPage("__meridianAlertCheck", Alerts.check(getApplicationContext()));
+                }
+            });
+        }
+
+        /** Opens the phone's settings for Meridian: "notifications", or the app page (battery). */
+        @JavascriptInterface
+        public void openSettings(String which) {
+            Intent i;
+            if ("notifications".equals(which) && Build.VERSION.SDK_INT >= 26) {
+                i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            } else {
+                i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+            }
+            try {
+                startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (ActivityNotFoundException ignored) {
+                // this phone has no such settings page
+            }
+        }
+    }
+
+    /** Calls window.<fn>(text) in the page, if the page defined it. */
+    private void tellPage(final String fn, final String text) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (web != null) web.evaluateJavascript("window." + fn + " && window." + fn + "(" + JSONObject.quote(text) + ")", null);
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        if (code == ASK_NOTIFICATIONS) tellPage("__meridianNotify", Alerts.permission(this));
+    }
+
+    /** One line about the last update check, for STATUS. */
+    private void noteUpdate(String result) {
+        Alerts.prefs(this).edit().putLong("updateAt", System.currentTimeMillis()).putString("updateResult", result).apply();
     }
 
     // ---- serving the web app -------------------------------------------------------------
@@ -295,11 +425,20 @@ public class MainActivity extends Activity {
         try {
             String latest = httpText("https://raw.githubusercontent.com/" + REPO + "/main/VERSION?t="
                     + System.currentTimeMillis()).trim();
-            if (latest.isEmpty() || latest.length() > 40) return;
-            if (compareVersions(latest, installedVersion()) <= 0) return;
+            if (latest.isEmpty() || latest.length() > 40) {
+                noteUpdate("GitHub answered without a version number");
+                return;
+            }
+            if (compareVersions(latest, installedVersion()) <= 0) {
+                noteUpdate("up to date (" + installedVersion() + "; newest published " + latest + ")");
+                return;
+            }
 
             deleteTree(tmp);
-            if (!tmp.mkdirs()) return;
+            if (!tmp.mkdirs()) {
+                noteUpdate(latest + " is available, but the app couldn't make a folder for it");
+                return;
+            }
             HttpURLConnection conn = open("https://codeload.github.com/" + REPO + "/zip/refs/heads/main");
             ZipInputStream zip = new ZipInputStream(conn.getInputStream());
             int files = 0;
@@ -330,13 +469,16 @@ public class MainActivity extends Activity {
             }
             if (files < 10 || !new File(tmp, "index.html").isFile() || !new File(tmp, "VERSION").isFile()) {
                 deleteTree(tmp);
+                noteUpdate(latest + " is available, but the download was incomplete (" + files + " files)");
                 return;
             }
             deleteTree(webDir());
             if (!tmp.renameTo(webDir())) {
                 deleteTree(tmp);
+                noteUpdate(latest + " was downloaded, but couldn't be put in place");
                 return;
             }
+            noteUpdate("updated to " + latest);
             final String v = latest;
             runOnUiThread(new Runnable() {
                 @Override
@@ -347,6 +489,7 @@ public class MainActivity extends Activity {
             });
         } catch (Exception e) {
             deleteTree(tmp); // offline or GitHub unreachable: keep the current version
+            noteUpdate("failed: " + (e instanceof UnknownHostException ? "no internet connection" : String.valueOf(e.getMessage())));
         }
     }
 

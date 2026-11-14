@@ -5,6 +5,7 @@ import { LiveTable, px, pct, chgText, dir, num, big, signed, secLink, esc, el, s
 import { XYChart } from '../chart.js';
 import { logReturns, corr } from '../studies.js';
 import { SECTORS } from '../universe.js';
+import * as notify from '../notify.js';
 
 register({
   code: 'NEWS', aliases: ['TOP', 'N', 'NI'], name: 'News headlines', cat: 'News',
@@ -419,39 +420,124 @@ register({
   },
 });
 
+// ---- price alerts ---------------------------------------------------------------------------
+// Kept in the browser's (or the phone app's) storage. On real data a triggered alert also shows
+// a system notification (src/notify.js); in the phone app the pending alerts are handed to the
+// app's native side, which checks them about every 15 minutes while Meridian is closed.
+
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+function loadAlerts() {
+  const list = store('alerts', []);
+  let changed = false;
+  for (const x of list) {
+    if (!x.id) {
+      x.id = newId();
+      changed = true;
+    }
+  }
+  if (changed) save('alerts', list);
+  return list;
+}
+// Official end-of-day series (Treasury/ECB) have no Yahoo price to check in the background.
+const backgroundable = (i) => !!(i && i.ysym && !i.eod);
+function saveAlerts(list, E) {
+  save('alerts', list);
+  if (E.mode !== 'live') return;
+  const rows = list.filter((x) => !x.hit).map((x) => [x, E.get(x.sym)]).filter(([, i]) => backgroundable(i))
+    .map(([x, i]) => ({ id: x.id, sym: x.sym, y: i.ysym, op: x.op, v: x.v, dp: i.dp, s10: i.cls === 'BOND' }));
+  notify.syncAlerts(rows);
+}
+const word = (op) => (op === '>' ? 'above' : 'below');
+const stamp = (ts) => new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/** Phone: alerts the app triggered while Meridian was closed. Marks them and says so; also re-syncs. */
+export function collectBackgroundAlerts(E, toast) {
+  if (E.mode !== 'live' || !notify.hasBackground()) return;
+  const list = loadAlerts();
+  for (const f of notify.takeFired()) {
+    const x = list.find((a) => a.id === f.id);
+    if (!x || x.hit) continue;
+    const i = E.get(x.sym);
+    x.hit = true;
+    x.bg = true;
+    x.hitTs = f.at;
+    x.hitAt = stamp(f.at);
+    x.hitPx = f.price;
+    toast(`ALERT while Meridian was closed: ${x.sym} ${x.op} ${num(x.v, i?.dp ?? 2)} — price ${num(f.price, i?.dp ?? 2)} at ${x.hitAt}`, 'alert');
+  }
+  saveAlerts(list, E);
+}
+
+// The line above the alert list: whether a triggered alert also reaches you outside Meridian.
+function notifyLine(E) {
+  if (E.mode !== 'live') return 'Simulated data: alerts show inside Meridian only.';
+  const p = notify.permission();
+  const phone = notify.onPhone();
+  if (p === 'old-app') return `Notifications on the phone need the newer Meridian app. <a href="${notify.APP_PAGE}" target="_blank" rel="noopener noreferrer">Get it here</a> (see <kbd>STATUS</kbd>).`;
+  if (p === 'unsupported') return 'This browser can’t show notifications: alerts show inside Meridian only.';
+  if (p === 'ask') return `<button class="tb" data-notify="ask">Turn on notifications</button> so an alert also reaches you ${phone ? 'when Meridian is closed' : 'when this window is minimised or behind other windows'}.`;
+  if (p === 'denied') return phone
+    ? 'Notifications are switched off for Meridian in the phone’s settings. <button class="tb" data-notify="settings">Open settings</button>'
+    : 'Notifications are blocked for Meridian in the browser (site permissions for this page › Notifications › Allow), so alerts show inside Meridian only.';
+  if (phone) {
+    const a = notify.appInfo()?.alerts;
+    return `Phone notifications: on. While Meridian is closed the phone checks about every 15 minutes (later when it is in deep sleep).${a?.lastCheck ? ` Last background check: ${stamp(a.lastCheck)} — ${esc(a.lastResult || '')}.` : ' No background check has run yet.'} <button class="tb" data-notify="test">Send a test</button>`;
+  }
+  return 'Notifications: on. They appear while this Meridian window is open, also minimised; not after you close it. <button class="tb" data-notify="test">Send a test</button>';
+}
+
 register({
   code: 'ALRT', aliases: ['ALERT', 'ALERTS'], name: 'Price alerts', cat: 'Trading',
-  help: 'ALRT <sym> >|< <level> · ALRT DEL <n> · ALRT',
+  help: 'ALRT <ticker> > <price> (above) · ALRT <ticker> < <price> (below) · ALRT DEL <n> · ALRT',
   run(ctx) {
     const E = ctx.engine;
     const a = ctx.args.map((x) => x.toUpperCase());
-    let list = store('alerts', []);
+    let list = loadAlerts();
+    const add = (sym, op, v) => {
+      list.push({ id: newId(), sym, op, v, hit: false });
+      saveAlerts(list, E);
+      ctx.app.toast(`Alert set: ${sym} ${op} ${v}`);
+      // the first alert is the moment to ask (asking needs a key press or tap, which this is)
+      if (E.mode === 'live' && notify.permission() === 'ask') notify.request().then(() => update());
+    };
+    const OPS = { '>': '>', '<': '<', ABOVE: '>', OVER: '>', BELOW: '<', UNDER: '<' };
     if (a[0] === 'DEL' && a[1]) {
       list.splice(Number(a[1]) - 1, 1);
-      save('alerts', list);
-    } else if (a.length >= 3 && E.get(a[0]) && (a[1] === '>' || a[1] === '<') && !Number.isNaN(Number(a[2]))) {
-      list.push({ sym: a[0], op: a[1], v: Number(a[2]), hit: false });
-      save('alerts', list);
-      ctx.app.toast(`Alert set: ${a[0]} ${a[1]} ${a[2]}`);
+      saveAlerts(list, E);
+    } else if (a.length >= 3 && E.get(a[0]) && OPS[a[1]] && a[2] !== '' && Number.isFinite(Number(a[2]))) {
+      add(E.get(a[0]).sym, OPS[a[1]], Number(a[2]));
     } else if (a.length >= 2 && E.get(a[0])) {
       const m = a.slice(1).join('').match(/^([<>])(-?[\d.]+)$/);
-      if (m) {
-        list.push({ sym: a[0], op: m[1], v: Number(m[2]), hit: false });
-        save('alerts', list);
-        ctx.app.toast(`Alert set: ${a[0]} ${m[1]} ${m[2]}`);
-      }
+      if (m && Number.isFinite(Number(m[2]))) add(E.get(a[0]).sym, m[1], Number(m[2]));
     }
+    const info = el('p', 'note alrt-note');
     const host = el('div');
-    ctx.el.appendChild(host);
+    ctx.el.append(info, host);
+    let shown = '';
     const update = () => {
       list = store('alerts', []);
+      const line = notifyLine(E);
+      if (line !== shown) info.innerHTML = shown = line; // only when it changes, so its buttons stay clickable
       host.innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="r">#</th><th class="l">Ticker</th><th class="l">Condition</th><th class="r">Last</th><th class="r">Distance</th><th class="l">Status</th></tr></thead><tbody>
         ${list.map((x, k) => {
           const i = E.get(x.sym);
+          if (!i) return `<tr><td class="r dim">${k + 1}</td><td class="l">${esc(x.sym)}</td><td class="l">${esc(x.op)} ${num(x.v, 2)}</td><td class="r dim" colspan="2">not in the ${E.mode === 'live' ? 'real' : 'simulated'} data</td><td class="l dim">${x.hit ? `TRIGGERED ${esc(x.hitAt || '')}` : 'not watched'}</td></tr>`;
           const dist = i.additive ? (x.v - i.last) * 100 : (x.v / i.last - 1) * 100;
-          return `<tr><td class="r dim">${k + 1}</td><td class="l">${secLink(i)}</td><td class="l">${x.op} ${num(x.v, i.dp)}</td><td class="r">${px(i)}</td><td class="r dim">${signed(dist, i.additive ? 1 : 2, i.additive ? 'bp' : '%')}</td><td class="l ${x.hit ? 'up' : 'dim'}">${x.hit ? `TRIGGERED ${x.hitAt}` : 'watching'}</td></tr>`;
-        }).join('')}</tbody></table></div>` : `<div class="empty">No alerts. Example: <kbd>ALRT ${esc(E.defaults.sec)} &gt; ${Math.round(E.get(E.defaults.sec).last * 1.05)}</kbd></div>`;
+          const status = x.hit
+            ? `TRIGGERED ${esc(x.hitAt || '')}${Number.isFinite(x.hitPx) ? ` at ${num(x.hitPx, i.dp)}` : ''}${x.bg ? ' <span class="dim">(while closed)</span>' : ''}`
+            : `watching${E.mode === 'live' && notify.hasBackground() && !backgroundable(i) ? ' <span class="dim">(only while Meridian is open)</span>' : ''}`;
+          return `<tr><td class="r dim">${k + 1}</td><td class="l">${secLink(i)}</td><td class="l">${x.op} ${num(x.v, i.dp)}</td><td class="r">${px(i)}</td><td class="r dim">${signed(dist, i.additive ? 1 : 2, i.additive ? 'bp' : '%')}</td><td class="l ${x.hit ? 'up' : 'dim'}">${status}</td></tr>`;
+        }).join('')}</tbody></table></div>
+        <p class="note">Remove one with <kbd>ALRT DEL 1</kbd> (its number). Yahoo's prices can be 15–20 minutes behind the exchange, so an alert can come that much late.</p>` : `<div class="empty">No alerts. Example: <kbd>ALRT ${esc(E.defaults.sec)} &gt; ${Math.round(E.get(E.defaults.sec).last * 1.05)}</kbd> tells you when ${esc(E.defaults.sec)} trades above that price; use <kbd>&lt;</kbd> for below.</div>`;
     };
+    info.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-notify]');
+      if (!b) return;
+      if (b.dataset.notify === 'ask') await notify.request();
+      else if (b.dataset.notify === 'settings') notify.openSettings('notifications');
+      else if (!notify.show('test', 'Meridian test notification', 'Price alerts will look like this.')) ctx.app.toast('The notification could not be shown.', 'err');
+      update();
+    });
     update();
     return { update };
   },
@@ -463,15 +549,18 @@ export function checkAlerts(E, toast) {
   for (const x of list) {
     if (x.hit) continue;
     const i = E.get(x.sym);
-    if (!i) continue;
+    if (!i || !Number.isFinite(i.last)) continue;
     if ((x.op === '>' && i.last > x.v) || (x.op === '<' && i.last < x.v)) {
       x.hit = true;
-      x.hitAt = E.timeLabel();
+      x.hitTs = Date.now();
+      x.hitAt = E.mode === 'live' ? stamp(x.hitTs) : E.timeLabel(); // real data: your local time; simulation: its own clock
+      x.hitPx = i.last;
       changed = true;
       toast(`ALERT ${x.sym} ${x.op} ${num(x.v, i.dp)} — last ${px(i)}`, 'alert');
+      if (E.mode === 'live') notify.show(x.id || x.sym, `${x.sym} ${word(x.op)} ${num(x.v, i.dp)}`, `Last price ${px(i)}. Meridian price alert.`);
     }
   }
-  if (changed) save('alerts', list);
+  if (changed) saveAlerts(list, E);
 }
 
 register({

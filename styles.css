@@ -401,3 +401,39 @@ a.doc:hover { text-decoration: underline; }
 .srcm:hover, .srcm:focus-visible { border-color: var(--accent); outline: none; }
 .src-line { margin: 0 0 8px; overflow-wrap: anywhere; font-size: 13px; }
 @media (max-width: 900px) { .srcm { font-size: 10px; line-height: 15px; padding: 0 4px; } .srcm.na { font-size: inherit; } }
+
+/* STATUS (self-test) and notifications */
+.st-ok { color: var(--up); }
+.st-bad { color: var(--down); }
+.st-sum { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.st-sum.good { color: var(--up); }
+.st-sum.bad { color: var(--down); }
+.st-tbl td { vertical-align: top; }
+.st-tbl td.wrap { white-space: normal; min-width: 180px; overflow-wrap: anywhere; }
+.st-tbl td.nw, .nw { white-space: nowrap; }
+.status-fn h3 { font-size: 11px; color: var(--dim); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; margin: 10px 8px 4px; }
+.st-list { padding: 0 8px; display: grid; gap: 4px; font-size: 12px; }
+.st-warn { color: var(--warn); font-size: 12px; }
+.st-log { margin: 8px; font-size: 11px; }
+.st-log summary { cursor: pointer; color: var(--dim); }
+.st-log pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; padding: 6px; border: 1px solid var(--line); max-height: 220px; overflow: auto; }
+.st-report { display: block; width: calc(100% - 16px); height: 160px; margin: 0 8px 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); font: 11px/1.4 monospace; }
+.status-fn .val-add { padding: 6px 8px; }
+.alrt-note { font-size: 12px; }
+
+/* COMPARE */
+.cmp-tbl td, .cmp-tbl th { vertical-align: top; }
+.cmp-tbl td:first-child, .cmp-tbl th:first-child { position: sticky; left: 0; background: var(--panel, var(--bg)); z-index: 1; white-space: normal; min-width: 128px; max-width: 220px; }
+.cmp-tbl th { font-weight: 400; }
+.cmp-sec td { padding-top: 10px; font-size: 11px; color: var(--dim); letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.cmp-best { color: var(--up); }
+.cmp-worst { color: var(--down); }
+.cmp-x { padding: 0 4px; line-height: 14px; }
+.cmp-add { padding: 6px 8px; }
+@media (max-width: 700px) {
+  .cmp-tbl td:first-child, .cmp-tbl th:first-child { min-width: 88px; max-width: 104px; }
+  .cmp-tbl td.r, .cmp-tbl th.r { white-space: normal; padding-left: 4px; min-width: 70px; }
+  .cmp-tbl .cmp-name { display: none; }
+}
+.st-report[hidden] { display: none; }
+.st-tbl td.wrap + td { padding-left: 6px; }

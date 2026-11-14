@@ -380,7 +380,39 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     });
   }
 
-  return { chart, quotes, news, search, profile, options, statements, details, events, filings, etf, normalizeChart, normalizeQuote };
+  // ---- STATUS: one fresh (never cached) request for each kind of Yahoo data -----------------
+  const empty = (what) => Object.assign(new YahooError(`Yahoo Finance answered, but without ${what}`, 502), { http: 'empty' });
+  const probe = {
+    async prices() {
+      const d = await json(`${Q1}/v8/finance/chart/AAPL?range=5d&interval=1d&includePrePost=false`);
+      const r = d?.chart?.result?.[0];
+      const last = r ? normalizeChart(r, '1d').bars.pop() : null;
+      if (!last) throw empty('price history');
+      return `AAPL closed at ${last.c.toFixed(2)} on ${last.t}`;
+    },
+    async quotes() {
+      const d = await withCrumb((c) => `${Q1}/v7/finance/quote?symbols=AAPL&crumb=${encodeURIComponent(c)}`);
+      const q = d?.quoteResponse?.result?.[0];
+      if (!Number.isFinite(q?.regularMarketPrice)) throw empty('a quote');
+      return `AAPL last price ${q.regularMarketPrice.toFixed(2)}`;
+    },
+    async financials() {
+      const now = Math.floor(Date.now() / 1000);
+      const make = (crumb) => `${Q2}/ws/fundamentals-timeseries/v1/finance/timeseries/AAPL?symbol=AAPL&type=annualTotalRevenue&period1=${now - 7 * 365 * 86400}&period2=${now + 86400}${crumb ? `&crumb=${encodeURIComponent(crumb)}` : ''}`;
+      let data;
+      try {
+        data = await json(make(null));
+      } catch (err) {
+        if (err.status !== 401 && err.status !== 403) throw err;
+        data = await withCrumb(make);
+      }
+      const rows = (data?.timeseries?.result || []).flatMap((r) => r.annualTotalRevenue || []).filter((x) => x?.asOfDate);
+      if (!rows.length) throw empty('financial statements');
+      return `AAPL annual statements up to ${rows.map((x) => x.asOfDate).sort().pop()}`;
+    },
+  };
+
+  return { chart, quotes, news, search, profile, options, statements, details, events, filings, etf, normalizeChart, normalizeQuote, probe };
 }
 
 export async function pool(items, size, fn) {

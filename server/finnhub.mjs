@@ -80,6 +80,19 @@ export function createFinnhub({ getKey, fetchImpl = fetch, WebSocketImpl = globa
     // per 10-K or 10-Q with its XBRL concepts: Meridian's third source for annual figures.
     reported: (symbol, freq = 'annual') => cached(`rep:${symbol}:${freq}`, 12 * 60 * 60e3, async () => (await rest('/stock/financials-reported', { symbol, freq })).data || []),
     configured: () => !!getKey(),
+    // STATUS: fresh (never cached) requests, so a plan that lacks a data set shows its real answer
+    probe: {
+      async quote() {
+        const q = await rest('/quote', { symbol: 'AAPL' });
+        if (!Number.isFinite(q?.c)) throw Object.assign(new FinnhubError('Finnhub answered without a price', 502), { http: 'empty' });
+        return `AAPL last price ${q.c.toFixed(2)}`;
+      },
+      async reported() {
+        const n = ((await rest('/stock/financials-reported', { symbol: 'AAPL', freq: 'annual' })).data || []).length;
+        if (!n) throw Object.assign(new FinnhubError('Finnhub answered, but with no financial statements', 502), { http: 'empty' });
+        return `${n} annual reports for AAPL`;
+      },
+    },
 
     news: (category) => cached(`news:${category}`, 3 * 60e3, async () => (await rest('/news', { category })).map(story)),
     companyNews: (symbol) => cached(`cnews:${symbol}`, 5 * 60e3, async () => (await rest('/company-news', { symbol, from: day(-7), to: day(0) })).slice(0, 40).map(story)),

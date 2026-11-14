@@ -10,6 +10,13 @@ downloads newer versions of Meridian's web files from this repository by itself,
 reinstall when the Android code here changes. API keys (`FINNHUB <key>`, `FRED <key>`) are
 stored in the app on the phone.
 
+Price alerts (`ALRT`) also work while the app is closed: the app keeps the alerts that are still
+waiting and a background job (`Alerts.java`, `AlertJob.java`; Android's JobScheduler) reads their
+prices from Yahoo Finance about every 15 minutes, only while at least one alert is waiting, and
+shows a notification when one is reached. Android decides the exact timing: a phone in deep
+sleep, or one whose battery saver restricts Meridian, can check much later. `STATUS` in the app
+shows when the last check ran and what it found.
+
 Built by GitHub Actions (`.github/workflows/android.yml`, `android/build.sh`) whenever
 `android/` changes; run the workflow by hand from the Actions tab to rebuild.
 

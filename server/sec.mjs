@@ -124,5 +124,21 @@ export function createSec({ fetchImpl = fetch } = {}) {
     return res.text();
   });
 
-  return { filings, cikOf, profile, concept, latest10K, documentText };
+  // ---- STATUS: one fresh (never cached) request to each of the SEC's two hosts ---------------
+  const none = (what) => Object.assign(new Error(`SEC EDGAR answered, but ${what}`), { status: 502, http: 'empty', source: 'SEC EDGAR' });
+  const probe = {
+    async list() {
+      const n = Object.keys((await json('https://www.sec.gov/files/company_tickers.json')) || {}).length;
+      if (!n) throw none('the company list was empty');
+      return `${n.toLocaleString('en-US')} companies in the SEC's list`;
+    },
+    async figures() {
+      const d = await json('https://data.sec.gov/api/xbrl/companyconcept/CIK0000320193/us-gaap/NetIncomeLoss.json');
+      const rows = (d?.units?.USD || []).filter((r) => r.form === '10-K' && r.end);
+      if (!rows.length) throw none('no reported figures came back');
+      return `Apple's 10-K figures up to ${rows.map((r) => r.end).sort().pop()}`;
+    },
+  };
+
+  return { filings, cikOf, profile, concept, latest10K, documentText, probe };
 }

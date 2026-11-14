@@ -576,6 +576,7 @@ const ok = (body) => new Response(JSON.stringify(body), { status: 200, headers: 
 
 export async function mockFetch(url) {
   const u = new URL(url);
+  if (u.hostname === 'raw.githubusercontent.com') return new Response('2026.12.31.1\n', { status: 200 }); // STATUS's update check (test value)
   if (u.hostname === 'finnhub.io') return finnhub(u);
   if (u.hostname === 'home.treasury.gov') return new Response(treasuryCsv(), { status: 200 });
   if (u.hostname === 'data-api.ecb.europa.eu') return new Response(ecbCsv(), { status: 200 });

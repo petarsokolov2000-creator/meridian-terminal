@@ -97,6 +97,7 @@ function install() {
         },
       },
       currentVersion: async () => (await (await pageFetch('/VERSION', { cache: 'no-store' })).text()).trim(),
+      hostInfo: async () => ({ kind: 'android' }),
       universe: liveSymbols(),
     });
   })();

@@ -84,6 +84,13 @@ const backend = createBackend({
     },
   },
   currentVersion: async () => (await readFile(path.join(ROOT, 'VERSION'), 'utf8')).trim(),
+  // What STATUS shows about this PC: the last lines of the updater's log (.cache/update.log),
+  // with the Windows user folder name taken out so the report can be shared.
+  hostInfo: async () => {
+    const log = await readFile(path.join(ROOT, '.cache', 'update.log'), 'utf8').catch(() => '');
+    const lines = log.split(/\r?\n/).filter((l) => l.trim()).slice(-14).map((l) => l.replace(/([A-Za-z]:\\Users\\)[^\\]+/g, '$1…').slice(0, 300));
+    return { kind: 'pc', platform: process.platform, node: process.version, selfUpdate: canSelfUpdate, lan: LAN, updateLog: lines };
+  },
   universe: liveSymbols(),
   mock: !!mock,
 });

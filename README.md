@@ -178,6 +178,10 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 
 Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `CHART AAPL VS MSFT`, `SCRN pe<20 yld>2 sort=-chg`,
 `BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT 1|2|4`, `RESET`.
+`STATUS` tests every data source right now and shows each real answer, plus your version, API keys and
+notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side (valuation, growth, margins,
+returns, debt). A price alert that is reached also shows a system notification: on the PC while the Meridian
+window is open, in the Android app also while it is closed (checked about every 15 minutes).
 Keys: `/` jumps to the command line, `Ctrl+1–4` focuses a panel, `Tab` completes,
 `Alt+←` goes back.
 

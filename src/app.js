@@ -28,7 +28,6 @@ const PANEL_DEFAULTS = [
 ];
 const LINKS = ['A', 'B', 'C', null];
 const MAX_TABS = 12;
-const NEW_TAB_CMD = 'WATCH';
 
 let engine; // chosen at boot: LiveEngine (real data via serve.mjs) or the simulation
 
@@ -67,6 +66,25 @@ class Panel {
       }
     });
     this.paintLink();
+  }
+  // A tab that has nothing in it yet: a hint and a few starting points.
+  showEmpty() {
+    this.mounted?.destroy?.();
+    this.mounted = null;
+    this.def = null;
+    this.sec = null;
+    this.state = null;
+    this.title.innerHTML = '<span class="pname">Empty tab</span>';
+    this.root.classList.remove('sec-fn');
+    this.body.scrollTop = 0;
+    const start = [['WATCH', 'WATCH'], ['NEWS', 'NEWS'], ['HEAT', 'HEAT'], ['OVER', 'OVER'], [`${engine.defaults.sec} CHART`, 'CHART'], ['HELP', 'HELP']];
+    this.body.innerHTML = `<div class="empty-tab"><p><b>Empty tab.</b> Type a ticker or a function in the command line at the top, for example <kbd>${esc(engine.defaults.sec)}</kbd> or <kbd>${esc(engine.defaults.sec)} CHART</kbd>.</p>
+      <p class="dim">Or start from one of these:</p><div class="chips">${start.map(([cmd, label]) => `<button class="chip" data-cmd="${esc(cmd)}">${esc(label)}</button>`).join('')}</div></div>`;
+    this.body.querySelector('.empty-tab').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cmd]');
+      if (b) this.app.run(b.dataset.cmd, this);
+    });
+    this.app.persist();
   }
   // position changed (a tab before this one was closed)
   renumber(idx) {
@@ -152,9 +170,11 @@ class App {
       const s = saved[i];
       this.focused = i;
       if (s?.code && resolve(s.code)) this.show(p, resolve(s.code), engine.get(s.sym), s.args || []);
+      else if (s?.empty) p.showEmpty();
       else {
-        const d = PANEL_DEFAULTS[i]?.cmd || NEW_TAB_CMD;
-        this.run(d === 'CHART' ? `${engine.defaults.sec} CHART` : d);
+        const d = PANEL_DEFAULTS[i]?.cmd;
+        if (!d) p.showEmpty();
+        else this.run(d === 'CHART' ? `${engine.defaults.sec} CHART` : d);
       }
       p.history = [];
     });
@@ -199,7 +219,7 @@ class App {
   persist() {
     this.paintTabs();
     if (this.booting) return;
-    save(`panels:${engine.mode}`, this.panels.map((p) => ({ ...p.state, link: p.link })));
+    save(`panels:${engine.mode}`, this.panels.map((p) => (p.state ? { ...p.state, link: p.link } : { empty: true, link: p.link })));
   }
 
   focus(i) {
@@ -226,7 +246,7 @@ class App {
   }
 
   // Open another tab (a new panel). Only the tab view can show more than four, so switch to it.
-  addPanel(cmd = NEW_TAB_CMD) {
+  addPanel(cmd = '') {
     if (this.panels.length >= MAX_TABS) return this.toast(`That's the most tabs (${MAX_TABS}). Close one with × first.`, 'err');
     const p = new Panel(this, this.panels.length, null);
     this.panels.push(p);
@@ -237,7 +257,8 @@ class App {
     }
     this.maxed = null;
     this.focused = this.panels.length - 1;
-    this.run(cmd, p);
+    if (cmd) this.run(cmd, p);
+    else p.showEmpty();
     p.history = [];
     this.applyLayout();
     this.focus(this.panels.length - 1);
@@ -270,7 +291,7 @@ class App {
     this.tabs.hidden = !tabs;
     if (!tabs) return;
     const many = this.panels.length > 1;
-    this.tabs.innerHTML = this.panels.map((p, k) => `<div class="tab ${k === this.focused ? 'on' : ''}"><button class="tabgo" role="tab" aria-selected="${k === this.focused}" data-tab="${k}"><span class="tabn">${k + 1}</span> ${p.def ? `${p.sec ? `<b>${esc(p.sec.sym)}</b> ` : ''}${esc(p.def.code)}` : '…'}</button>${many ? `<button class="tabx" data-close="${k}" title="Close tab ${k + 1}" aria-label="Close tab ${k + 1}">×</button>` : ''}</div>`).join('') + (this.panels.length < MAX_TABS ? '<button class="tabnew" data-newtab title="Open a new tab (command: TAB)" aria-label="New tab">+</button>' : '');
+    this.tabs.innerHTML = this.panels.map((p, k) => `<div class="tab ${k === this.focused ? 'on' : ''}"><button class="tabgo" role="tab" aria-selected="${k === this.focused}" data-tab="${k}"><span class="tabn">${k + 1}</span> ${p.def ? `${p.sec ? `<b>${esc(p.sec.sym)}</b> ` : ''}${esc(p.def.code)}` : '<span class="dim">new</span>'}</button>${many ? `<button class="tabx" data-close="${k}" title="Close tab ${k + 1}" aria-label="Close tab ${k + 1}">×</button>` : ''}</div>`).join('') + (this.panels.length < MAX_TABS ? '<button class="tabnew" data-newtab title="Open a new tab (command: TAB)" aria-label="New tab">+</button>' : '');
     this.tabs.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
@@ -339,7 +360,7 @@ class App {
     if (up[0] === 'TAB' || up[0] === 'NEWTAB' || up[0] === 'TABS') {
       if (/^(CLOSE|X|DEL|RM)$/.test(up[1] || '')) return this.closePanel(this.focused);
       if (up[0] === 'TABS') return this.setLayout('tabs');
-      return this.addPanel(toks.slice(1).join(' ') || NEW_TAB_CMD);
+      return this.addPanel(toks.slice(1).join(' '));
     }
     if (up[0] === 'LAYOUT') {
       const a = up[1];

@@ -475,3 +475,6 @@ a.doc:hover { text-decoration: underline; }
   .tbl th.qname, .tbl td.qname { display: none; }
   .intr-box { gap: 6px 16px; }
 }
+
+.empty-tab { padding: 18px 14px; line-height: 1.6; max-width: 640px; }
+.empty-tab p { margin: 0 0 8px; }

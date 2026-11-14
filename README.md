@@ -177,7 +177,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | System | `HELP` |
 
 Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `CHART AAPL VS MSFT`, `SCRN pe<20 yld>2 sort=-chg`,
-`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT TABS` (one big panel with tabs; phones start this way; `+` or `TAB` opens more tabs, up to 12, `×` or `TAB CLOSE` closes one; the four-panel view shows the first four) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.
+`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT TABS` (one big panel with tabs; phones start this way; `+` or `TAB` opens more tabs, up to 12, which start empty, `×` or `TAB CLOSE` closes one; the four-panel view shows the first four) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.
 `STATUS` tests every data source right now and shows each real answer, plus your version, API keys and
 notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side (valuation, growth, margins,
 returns, debt, and an intrinsic value). Real company stocks also show an **intrinsic value** per share:

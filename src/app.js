@@ -27,6 +27,8 @@ const PANEL_DEFAULTS = [
   { cmd: 'HEAT', link: 'B' },
 ];
 const LINKS = ['A', 'B', 'C', null];
+const MAX_TABS = 12;
+const NEW_TAB_CMD = 'WATCH';
 
 let engine; // chosen at boot: LiveEngine (real data via serve.mjs) or the simulation
 
@@ -34,7 +36,7 @@ class Panel {
   constructor(app, idx, saved) {
     this.app = app;
     this.idx = idx;
-    this.link = saved?.link ?? PANEL_DEFAULTS[idx].link;
+    this.link = saved?.link ?? PANEL_DEFAULTS[idx]?.link ?? null;
     this.history = [];
     this.root = el('section', 'panel');
     this.root.dataset.idx = idx + 1;
@@ -65,6 +67,14 @@ class Panel {
       }
     });
     this.paintLink();
+  }
+  // position changed (a tab before this one was closed)
+  renumber(idx) {
+    this.idx = idx;
+    this.root.dataset.idx = idx + 1;
+    const n = this.root.querySelector('.pnum');
+    n.textContent = idx + 1;
+    n.title = `Focus panel (Ctrl+${idx + 1})`;
   }
   paintLink() {
     const b = this.root.querySelector('.plink');
@@ -128,7 +138,9 @@ class App {
     this.layout = [1, 2, 4, 'tabs'].includes(saved0) ? saved0 : phone ? 'tabs' : 4;
     this.grid = document.getElementById('grid');
     const saved = store(`panels:${engine.mode}`, []);
-    this.panels = PANEL_DEFAULTS.map((_, i) => new Panel(this, i, saved[i]));
+    // four panels to start with; more can be opened as tabs (up to MAX_TABS), and closed again
+    const count = Math.min(MAX_TABS, Math.max(PANEL_DEFAULTS.length, Array.isArray(saved) ? saved.length : 0));
+    this.panels = Array.from({ length: count }, (_, i) => new Panel(this, i, saved[i]));
     this.panels.forEach((p) => this.grid.appendChild(p.root));
     this.cmd = document.getElementById('cmd');
     this.cmd.placeholder = `Ticker or function, e.g. ${engine.defaults.sec} CHART 1Y RSI · HEAT · HELP`;
@@ -140,17 +152,23 @@ class App {
       const s = saved[i];
       this.focused = i;
       if (s?.code && resolve(s.code)) this.show(p, resolve(s.code), engine.get(s.sym), s.args || []);
-      else this.run(PANEL_DEFAULTS[i].cmd === 'CHART' ? `${engine.defaults.sec} CHART` : PANEL_DEFAULTS[i].cmd);
+      else {
+        const d = PANEL_DEFAULTS[i]?.cmd || NEW_TAB_CMD;
+        this.run(d === 'CHART' ? `${engine.defaults.sec} CHART` : d);
+      }
       p.history = [];
     });
     this.booting = false;
     this.tabs = document.getElementById('tabs');
     this.tabs.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-close]');
+      if (x) return this.closePanel(Number(x.dataset.close));
+      if (e.target.closest('[data-newtab]')) return this.addPanel();
       const b = e.target.closest('[data-tab]');
       if (b) { this.focus(Number(b.dataset.tab)); this.cmd.focus({ preventScroll: true }); }
     });
     document.getElementById('viewbtn').addEventListener('click', () => this.setLayout(this.layout === 'tabs' ? 4 : 'tabs'));
-    this.focus(Math.min(3, Math.max(0, Number(store('tabFocus', 0)) || 0)));
+    this.focus(Math.min(this.panels.length - 1, Math.max(0, Number(store('tabFocus', 0)) || 0)));
     this.applyLayout();
     this.bindCommandLine();
     this.bindKeys();
@@ -203,19 +221,57 @@ class App {
     this.maxed = null;
     save('layout', l);
     this.applyLayout();
-    this.focus(Math.min(this.focused, this.layout === 'tabs' || this.layout === 4 ? 3 : this.layout - 1));
-    this.toast(l === 'tabs' ? 'Tabs: one big panel at a time. Tap a tab (or Ctrl+1-4) to switch. Switch back with the button at the top.' : `${l} panel${l === 1 ? '' : 's'} on screen.`);
+    this.focus(Math.min(this.focused, this.layout === 'tabs' ? this.panels.length - 1 : Math.min(this.layout, this.panels.length) - 1));
+    this.toast(l === 'tabs' ? 'Tabs: one big panel at a time. Tap a tab (or Ctrl+1-9) to switch, + opens a new one, × closes one. Switch back with the button at the top.' : `${l} panel${l === 1 ? '' : 's'} on screen.${this.panels.length > l ? ` Your other ${this.panels.length - l} tab${this.panels.length - l === 1 ? ' is' : 's are'} still open: switch back to Tabs to see ${this.panels.length - l === 1 ? 'it' : 'them'}.` : ''}`);
+  }
+
+  // Open another tab (a new panel). Only the tab view can show more than four, so switch to it.
+  addPanel(cmd = NEW_TAB_CMD) {
+    if (this.panels.length >= MAX_TABS) return this.toast(`That's the most tabs (${MAX_TABS}). Close one with × first.`, 'err');
+    const p = new Panel(this, this.panels.length, null);
+    this.panels.push(p);
+    this.grid.appendChild(p.root);
+    if (this.layout !== 'tabs') {
+      this.layout = 'tabs';
+      save('layout', 'tabs');
+    }
+    this.maxed = null;
+    this.focused = this.panels.length - 1;
+    this.run(cmd, p);
+    p.history = [];
+    this.applyLayout();
+    this.focus(this.panels.length - 1);
+    this.persist();
+    this.cmd.focus({ preventScroll: true });
+  }
+
+  closePanel(i) {
+    if (this.panels.length <= 1) return this.toast('The last tab can\'t be closed.', 'err');
+    const p = this.panels[i];
+    if (!p) return;
+    p.mounted?.destroy?.();
+    p.root.remove();
+    this.panels.splice(i, 1);
+    this.panels.forEach((q, k) => q.renumber(k));
+    this.maxed = null;
+    const next = i < this.focused ? this.focused - 1 : Math.min(this.focused, this.panels.length - 1);
+    this.focused = next;
+    this.applyLayout();
+    this.focus(next);
+    this.persist();
   }
 
   paintTabs() {
     if (!this.tabs || !this.panels) return;
     const tabs = this.layout === 'tabs';
     const btn = document.getElementById('viewbtn');
-    btn.textContent = tabs ? '▦ 4 panels' : '▤ Tabs';
+    btn.textContent = tabs ? '▦ 4 panels' : `▤ Tabs${this.panels.length > 4 ? ` (${this.panels.length})` : ''}`;
     btn.setAttribute('aria-pressed', String(tabs));
     this.tabs.hidden = !tabs;
     if (!tabs) return;
-    this.tabs.innerHTML = this.panels.map((p, k) => `<button class="tab ${k === this.focused ? 'on' : ''}" role="tab" aria-selected="${k === this.focused}" data-tab="${k}"><span class="tabn">${k + 1}</span> ${p.def ? `${p.sec ? `<b>${esc(p.sec.sym)}</b> ` : ''}${esc(p.def.code)}` : '…'}</button>`).join('');
+    const many = this.panels.length > 1;
+    this.tabs.innerHTML = this.panels.map((p, k) => `<div class="tab ${k === this.focused ? 'on' : ''}"><button class="tabgo" role="tab" aria-selected="${k === this.focused}" data-tab="${k}"><span class="tabn">${k + 1}</span> ${p.def ? `${p.sec ? `<b>${esc(p.sec.sym)}</b> ` : ''}${esc(p.def.code)}` : '…'}</button>${many ? `<button class="tabx" data-close="${k}" title="Close tab ${k + 1}" aria-label="Close tab ${k + 1}">×</button>` : ''}</div>`).join('') + (this.panels.length < MAX_TABS ? '<button class="tabnew" data-newtab title="Open a new tab (command: TAB)" aria-label="New tab">+</button>' : '');
+    this.tabs.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   applyLayout() {
@@ -279,6 +335,11 @@ class App {
       save('theme', this.theme);
       this.panels.forEach((p) => p.mounted?.update?.());
       return;
+    }
+    if (up[0] === 'TAB' || up[0] === 'NEWTAB' || up[0] === 'TABS') {
+      if (/^(CLOSE|X|DEL|RM)$/.test(up[1] || '')) return this.closePanel(this.focused);
+      if (up[0] === 'TABS') return this.setLayout('tabs');
+      return this.addPanel(toks.slice(1).join(' ') || NEW_TAB_CMD);
     }
     if (up[0] === 'LAYOUT') {
       const a = up[1];
@@ -534,12 +595,13 @@ class App {
 
   bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && /^[1-4]$/.test(e.key)) {
+      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key) && Number(e.key) <= this.panels.length) {
         e.preventDefault();
         const i = Number(e.key) - 1;
         if (this.maxed != null) this.maxed = null;
         if (this.layout !== 'tabs' && i >= this.layout) {
-          this.layout = 4;
+          // panels 5+ only exist in the tab view; 1-4 just need the four-panel grid
+          this.layout = i >= 4 ? 'tabs' : 4;
         }
         this.applyLayout();
         this.focus(i);

@@ -43,7 +43,7 @@ class Surface {
       text: css(h, '--chart-text') || '#aaa',
       up: css(h, '--up') || '#2c2',
       down: css(h, '--down') || '#e33',
-      line: css(h, '--accent') || '#fa0',
+      line: css(h, '--accent') || '#ffa028',
       cross: css(h, '--chart-cross') || '#888',
       series: [css(h, '--s1'), css(h, '--s2'), css(h, '--s3'), css(h, '--s4'), css(h, '--s5'), css(h, '--s6')],
     };

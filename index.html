@@ -18,14 +18,18 @@
       <input id="cmd" class="cmd" autocomplete="off" spellcheck="false" placeholder="Ticker or function · HELP" aria-label="Command line">
       <ul id="suggest" class="suggest" hidden></ul>
     </div>
+    <button id="viewbtn" class="viewbtn" type="button" title="Switch between four panels on one screen and one big panel with tabs (LAYOUT TABS / LAYOUT 4)"></button>
     <div id="status" class="status"></div>
   </header>
   <div class="tape" aria-label="Ticker tape"><div id="tape-inner" class="tape-inner"></div></div>
-  <main id="grid" class="grid" data-layout="4"></main>
+  <div class="stage">
+    <nav id="tabs" class="tabs" role="tablist" aria-label="Panels" hidden></nav>
+    <main id="grid" class="grid" data-layout="4"></main>
+  </div>
   <footer class="footbar">
     <span id="disclaimer"></span>
     <span id="boot" class="dim"></span>
-    <span><kbd>HELP</kbd> functions · <kbd>/</kbd> command line · <kbd>Ctrl</kbd>+<kbd>1-4</kbd> panels</span>
+    <span><kbd>HELP</kbd> functions · <kbd>/</kbd> command line · <kbd>Ctrl</kbd>+<kbd>1-4</kbd> panels / tabs</span>
   </footer>
   <div id="boot-screen" class="boot-screen"><div><div class="brand">◢ MERIDIAN</div><p id="boot-msg">Starting…</p></div></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>

@@ -650,6 +650,7 @@ export class Engine {
     let s = this.stories.filter((x) => x.minute <= m);
     if (sym) s = s.filter((x) => x.tickers.includes(sym));
     if (category) s = s.filter((x) => x.category === category);
+    else if (!sym) s = s.filter((x) => x.category !== 'Crypto'); // the main feed isn't all crypto; it has its own tab
     return s.reverse().slice(0, limit);
   }
 

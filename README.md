@@ -177,12 +177,16 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | System | `HELP` |
 
 Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `CHART AAPL VS MSFT`, `SCRN pe<20 yld>2 sort=-chg`,
-`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT 1|2|4`, `RESET`.
+`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT TABS` (one big panel with four tabs; phones start this way) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.
 `STATUS` tests every data source right now and shows each real answer, plus your version, API keys and
 notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side (valuation, growth, margins,
-returns, debt). A price alert that is reached also shows a system notification: on the PC while the Meridian
+returns, debt, and an intrinsic value). Real company stocks also show an **intrinsic value** per share:
+in `WATCH` (columns Intrinsic and Safety), at the top of `DES`, and in `COMPARE`. It is the base case of the `DCF` screen
+(if you changed the assumptions there, yours are used); banks and insurers get the Graham number instead, because a
+DCF doesn't apply to them. It is an estimate from stated assumptions, not a fact. The main news lists and pop-ups no
+longer fill up with crypto stories: those are under `NEWS` → Crypto. A price alert that is reached also shows a system notification: on the PC while the Meridian
 window is open, in the Android app also while it is closed (checked about every 15 minutes).
-Keys: `/` jumps to the command line, `Ctrl+1–4` focuses a panel, `Tab` completes,
+Keys: `/` jumps to the command line, `Ctrl+1–4` focuses a panel (or opens that tab), `Tab` completes,
 `Alt+←` goes back.
 
 ## Simulation clock

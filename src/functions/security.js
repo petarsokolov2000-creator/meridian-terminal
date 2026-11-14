@@ -7,6 +7,7 @@ import { logReturns, diffs, linreg, corr } from '../studies.js';
 import { Rng, hashString } from '../rng.js';
 import { SESSION_MIN } from '../engine.js';
 import { help } from '../glossary.js';
+import { intrinsic, isStock, marginOfSafety } from '../intrinsic.js';
 
 const CLS_NAME = { EQ: 'Equity', IDX: 'Index', FX: 'Currency', CMDTY: 'Commodity', CRYPTO: 'Crypto', BOND: 'Govt bond' };
 
@@ -42,6 +43,27 @@ register({
     const strip = quoteStrip(ctx);
     const body = el('div', 'desc');
     ctx.el.appendChild(body);
+    // intrinsic value line (real company stocks only): fills in once the filings have loaded
+    const ib = el('div', 'intr-box');
+    let ires = null;
+    let gone = false;
+    const drawIntr = () => {
+      if (!ires) return;
+      if (ires.kind === 'none') {
+        ib.innerHTML = `<span class="dim">Intrinsic value: n/a, ${esc(ires.why)}.</span>`;
+        return;
+      }
+      const m = marginOfSafety(ires, s.last);
+      ib.innerHTML = `<div class="intr-stat"><span class="intr-k">Intrinsic value${help('dcf')}</span><b class="intr-v">${num(ires.value, 2)}</b><span class="dim small">${ires.kind === 'graham' ? 'Graham number' : ires.edited ? 'DCF, your assumptions' : 'DCF, base case'}</span></div>
+        <div class="intr-stat"><span class="intr-k">Price</span><b class="intr-p">${num(s.last, 2)}</b><span class="dim small">${esc(s.ccy || '')}</span></div>
+        <div class="intr-stat"><span class="intr-k">Margin of safety${help('marginOfSafety')}</span><b class="intr-p ${m > 0 ? 'up' : 'down'}">${m > 0 ? '+' : ''}${num(m * 100, 0)}%</b><span class="dim small">${m > 0 ? 'price below value' : 'price above value'}</span></div>
+        <p class="dim small intr-note">${esc(ires.note)} An estimate from stated assumptions, not a fact: open <kbd>${esc(s.sym)} ${ires.kind === 'graham' ? 'VAL' : 'DCF'}</kbd> to change them.</p>`;
+    };
+    if (isStock(E, s)) {
+      body.before(ib);
+      ib.innerHTML = '<span class="dim">Intrinsic value: loading the company filings…</span>';
+      intrinsic(E, s.sym).then((r) => { if (!gone) { ires = r; drawIntr(); } }, (err) => { if (!gone) ib.innerHTML = `<span class="dim">Intrinsic value: couldn't load (${esc(err.message)}).</span>`; });
+    }
     const chartHost = el('div', 'chart-host short');
     const kv = (k, v, cls = '') => `<div class="kv"><span>${k}</span><b class="${cls}">${v}</b></div>`;
     const ret = (n) => s.last / s.history[Math.max(0, s.history.length - n)].c - 1;
@@ -82,7 +104,7 @@ register({
       if (b) ctx.app.run(`${s.sym} ${b.dataset.fn}`);
     });
     ctx.el.appendChild(related);
-    return { update: () => { strip(); draw(); }, every: 2, destroy: () => chart.destroy() };
+    return { update: () => { strip(); draw(); drawIntr(); }, every: 2, destroy: () => { gone = true; chart.destroy(); } };
   },
 });
 

@@ -31,6 +31,7 @@ function writeExtras(list) {
     // storage unavailable: the ticker just isn't remembered
   }
 }
+const CRYPTO_WORDS = /\b(bitcoin|btc|ethereum|ether|crypto\w*|altcoins?|stablecoins?|dogecoin|solana|ripple|xrp|binance|tether|memecoins?|defi|nfts?)\b/i;
 const INTRADAY_MS = 60000;
 const NEWS_MS = 5 * 60000;
 const MARKET_NEWS = [['stock market', 'Markets'], ['economy', 'Economy'], ['federal reserve', 'Central Banks'], ['oil prices', 'Commodities'], ['bitcoin', 'Crypto'], ['treasury yields', 'Rates'], ['dollar currency', 'FX'], ['earnings', 'Earnings']];
@@ -391,7 +392,10 @@ export class LiveEngine {
       return seen;
     }
     const tickers = (x.tickers || []).map((t) => this.bySym.get(String(t).toUpperCase())?.sym).filter(Boolean);
-    const s = { id: this.stories.length + 1, headline: x.headline, body: x.body || '', source: x.source, link: x.link, t: x.t, tickers, category: tickers.length && category === 'Markets' ? 'Company' : category, sentiment: 0, impact: 0 };
+    let cat = tickers.length && category === 'Markets' ? 'Company' : category;
+    // a general-market search can return a bitcoin story: it belongs under Crypto, not in the main feed
+    if (!tickers.length && cat !== 'Crypto' && CRYPTO_WORDS.test(x.headline)) cat = 'Crypto';
+    const s = { id: this.stories.length + 1, headline: x.headline, body: x.body || '', source: x.source, link: x.link, t: x.t, tickers, category: cat, sentiment: 0, impact: 0 };
     s.minute = this.minuteOf(x.t);
     this.stories.push(s);
     this.storyByKey.set(key, s);
@@ -547,6 +551,9 @@ export class LiveEngine {
       s = s.filter((x) => x.tickers.includes(sym));
     }
     if (category) s = s.filter((x) => x.category === category);
+    // crypto trades and reports around the clock, so left alone it fills every "latest" list:
+    // it only shows when asked for (the Crypto tab, or a crypto ticker's own news)
+    else if (!sym) s = s.filter((x) => x.category !== 'Crypto');
     return [...s].sort((a, b) => b.t - a.t).slice(0, limit);
   }
 

@@ -6,10 +6,11 @@ import { LiveTable, px, pct, chgText, netText, dir, num, big, signed, secLink, e
 import { sparkline, XYChart } from '../chart.js';
 import { SECTORS, TENORS } from '../universe.js';
 import { fmtVal } from '../news.js';
+import { peek, isStock, marginOfSafety } from '../intrinsic.js';
 
 const quoteCols = (E, extra = []) => [
   { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
-  { label: 'Name', value: (i) => esc(i.name) + (i.quoteSource === 'ecb' ? ` <span class="tag" title="Yahoo had no quote; ECB reference rate${i.quoteAsOf ? ` of ${esc(i.quoteAsOf)}` : ''}">ECB daily rate</span>` : ''), cls: 'l dim name' },
+  { label: 'Name', value: (i) => esc(i.name) + (i.quoteSource === 'ecb' ? ` <span class="tag" title="Yahoo had no quote; ECB reference rate${i.quoteAsOf ? ` of ${esc(i.quoteAsOf)}` : ''}">ECB daily rate</span>` : ''), cls: 'l dim name qname' },
   { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last },
   { label: 'Net', value: (i) => netText(i), cls: 'r', cellCls: (i) => dir(i.chg) },
   { label: 'Chg', value: (i) => chgText(i), cls: 'r', cellCls: (i) => dir(i.chg) },
@@ -50,9 +51,37 @@ register({
       save(key, list);
       ctx.app.toast(`Watchlist: ${list.length} securities`);
     }
-    return quoteMonitor(ctx, () => list.map((s) => E.get(s)).filter(Boolean), {
-      extra: [...hiLo, { label: 'Volume', value: (i) => (i.volume ? big(i.volume) : '—'), cls: 'r dim' }, spark(E)],
+    // intrinsic value: a stock's cell fills in once its filings have loaded (two at a time)
+    let redraw = () => {};
+    const intr = (i) => (isStock(E, i) ? peek(E, i.sym, () => redraw()) : undefined);
+    const mon = quoteMonitor(ctx, () => list.map((s) => E.get(s)).filter(Boolean), {
+      extra: [
+        {
+          label: 'Intrinsic', title: 'Estimated value per share: base-case DCF (banks and insurers: Graham number). An estimate from stated assumptions, not a fact. Open DCF or VAL for the working.',
+          cls: 'r',
+          value: (i) => {
+            const r = intr(i);
+            if (r === undefined) return '<span class="dim">—</span>';
+            if (r === null) return '<span class="dim" title="loading the company filings (about 10 seconds the first time)">…</span>';
+            return r.kind === 'none' ? `<span class="dim" title="${esc(r.why)}">n/a</span>` : `<span title="${esc(r.note)}">${num(r.value, 2)}${r.kind === 'graham' ? ' <span class="dim small">G</span>' : ''}</span>`;
+          },
+        },
+        {
+          label: 'Safety', title: 'Margin of safety = (intrinsic value − price) ÷ intrinsic value. Positive: the price is below the estimate. Negative: above.',
+          cls: 'r',
+          value: (i) => {
+            const m = marginOfSafety(intr(i), i.last);
+            return m == null ? '<span class="dim">—</span>' : `${m > 0 ? '+' : ''}${num(m * 100, 0)}%`;
+          },
+          cellCls: (i) => { const m = marginOfSafety(intr(i), i.last); return m == null ? 'dim' : m > 0 ? 'up' : 'down'; },
+        },
+        ...hiLo,
+        { label: 'Volume', value: (i) => (i.volume ? big(i.volume) : '—'), cls: 'r dim' },
+        spark(E),
+      ],
     });
+    redraw = () => mon.update();
+    return mon;
   },
 });
 

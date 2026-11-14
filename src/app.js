@@ -121,7 +121,11 @@ class Panel {
 class App {
   constructor() {
     this.engine = engine;
-    this.layout = store('layout', 4);
+    // 4 / 2 / 1 panels on one screen, or 'tabs' = one big panel with a tab for each of the four.
+    // Phones start with tabs (four stacked panels meant a very long scroll).
+    const phone = window.matchMedia?.('(max-width: 900px)').matches;
+    const saved0 = store('layout', null);
+    this.layout = [1, 2, 4, 'tabs'].includes(saved0) ? saved0 : phone ? 'tabs' : 4;
     this.grid = document.getElementById('grid');
     const saved = store(`panels:${engine.mode}`, []);
     this.panels = PANEL_DEFAULTS.map((_, i) => new Panel(this, i, saved[i]));
@@ -140,7 +144,13 @@ class App {
       p.history = [];
     });
     this.booting = false;
-    this.focus(0);
+    this.tabs = document.getElementById('tabs');
+    this.tabs.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tab]');
+      if (b) { this.focus(Number(b.dataset.tab)); this.cmd.focus({ preventScroll: true }); }
+    });
+    document.getElementById('viewbtn').addEventListener('click', () => this.setLayout(this.layout === 'tabs' ? 4 : 'tabs'));
+    this.focus(Math.min(3, Math.max(0, Number(store('tabFocus', 0)) || 0)));
     this.applyLayout();
     this.bindCommandLine();
     this.bindKeys();
@@ -169,14 +179,18 @@ class App {
   }
 
   persist() {
+    this.paintTabs();
     if (this.booting) return;
     save(`panels:${engine.mode}`, this.panels.map((p) => ({ ...p.state, link: p.link })));
   }
 
   focus(i) {
     this.focused = i;
+    if (!this.booting) save('tabFocus', i);
     this.panels.forEach((p, k) => p.root.classList.toggle('focused', k === i));
-    document.getElementById('target').textContent = `PANEL ${i + 1}`;
+    document.getElementById('target').textContent = `${this.layout === 'tabs' ? 'TAB' : 'PANEL'} ${i + 1}`;
+    if (this.layout === 'tabs' && this.grid && this.tabs) this.applyLayout();
+    else this.paintTabs();
   }
 
   toggleMax(i) {
@@ -184,14 +198,41 @@ class App {
     this.applyLayout();
   }
 
+  setLayout(l) {
+    this.layout = l;
+    this.maxed = null;
+    save('layout', l);
+    this.applyLayout();
+    this.focus(Math.min(this.focused, this.layout === 'tabs' || this.layout === 4 ? 3 : this.layout - 1));
+    this.toast(l === 'tabs' ? 'Tabs: one big panel at a time. Tap a tab (or Ctrl+1-4) to switch. Switch back with the button at the top.' : `${l} panel${l === 1 ? '' : 's'} on screen.`);
+  }
+
+  paintTabs() {
+    if (!this.tabs || !this.panels) return;
+    const tabs = this.layout === 'tabs';
+    const btn = document.getElementById('viewbtn');
+    btn.textContent = tabs ? '▦ 4 panels' : '▤ Tabs';
+    btn.setAttribute('aria-pressed', String(tabs));
+    this.tabs.hidden = !tabs;
+    if (!tabs) return;
+    this.tabs.innerHTML = this.panels.map((p, k) => `<button class="tab ${k === this.focused ? 'on' : ''}" role="tab" aria-selected="${k === this.focused}" data-tab="${k}"><span class="tabn">${k + 1}</span> ${p.def ? `${p.sec ? `<b>${esc(p.sec.sym)}</b> ` : ''}${esc(p.def.code)}` : '…'}</button>`).join('');
+  }
+
   applyLayout() {
-    const n = this.maxed != null ? 1 : this.layout;
+    const tabs = this.layout === 'tabs';
+    if (tabs) this.maxed = null;
+    const n = this.maxed != null || tabs ? 1 : this.layout;
     this.grid.dataset.layout = n;
+    this.grid.dataset.tabs = tabs ? '1' : '';
     this.panels.forEach((p, k) => {
-      const visible = this.maxed != null ? k === this.maxed : k < n;
+      const visible = this.maxed != null ? k === this.maxed : tabs ? k === this.focused : k < n;
+      const was = p.root.hidden;
       p.root.hidden = !visible;
+      // a panel coming out of hiding has no size yet: redraw it once it has one
+      if (was && visible && p.mounted?.update) requestAnimationFrame(() => p.mounted?.update?.());
     });
-    if (this.maxed == null && this.focused >= n) this.focus(0);
+    if (this.maxed == null && !tabs && this.focused >= n) this.focus(0);
+    this.paintTabs();
   }
 
   show(panel, def, sec, args) {
@@ -240,10 +281,8 @@ class App {
       return;
     }
     if (up[0] === 'LAYOUT') {
-      this.layout = [1, 2, 4].includes(Number(up[1])) ? Number(up[1]) : 4;
-      this.maxed = null;
-      save('layout', this.layout);
-      return this.applyLayout();
+      const a = up[1];
+      return this.setLayout(/^TABS?$/.test(a || '') ? 'tabs' : [1, 2, 4].includes(Number(a)) ? Number(a) : a ? 4 : this.layout === 'tabs' ? 4 : 'tabs');
     }
     if (up[0] === 'BACK') return panel.back();
     if (up[0] === 'RESET') {
@@ -499,7 +538,7 @@ class App {
         e.preventDefault();
         const i = Number(e.key) - 1;
         if (this.maxed != null) this.maxed = null;
-        if (i >= this.layout) {
+        if (this.layout !== 'tabs' && i >= this.layout) {
           this.layout = 4;
         }
         this.applyLayout();
@@ -544,7 +583,8 @@ class App {
   }
 
   onNews(stories) {
-    const pick = engine.mode === 'live' ? stories : stories.filter((s) => Math.abs(s.impact) > 0.02 || s.eco);
+    const main = stories.filter((s) => s.category !== 'Crypto'); // crypto news is on its own NEWS tab, not in the pop-ups
+    const pick = engine.mode === 'live' ? main : main.filter((s) => Math.abs(s.impact) > 0.02 || s.eco);
     for (const s of pick.slice(0, 2)) this.toast(`<b>${engine.storyTime(s)}</b> ${esc(s.headline)}`, 'news', s.id);
   }
 

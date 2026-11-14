@@ -1,12 +1,14 @@
 // SEC EDGAR: official filings for US-listed companies (annual and quarterly reports, current
 // reports, insider forms, proxies). Free, no key; the SEC asks every client to identify itself
 // in the User-Agent as "name email" (requests without a contact email are refused with 403)
-// and to stay under 10 requests a second, which this easily does. The contact is the
-// project's public GitHub no-reply address, not anyone's personal email.
+// and to stay under 10 requests a second, which this easily does. By default the contact is the
+// project's public GitHub no-reply address, not anyone's personal email. If the SEC refuses that
+// (HTTP 403), the user can set their own with SECID <email>; it is kept on their PC only.
 
-const UA = 'Meridian Terminal 322796608+petarsokolov2000-creator@users.noreply.github.com';
+const DEFAULT_CONTACT = '322796608+petarsokolov2000-creator@users.noreply.github.com';
 
-export function createSec({ fetchImpl = fetch } = {}) {
+export function createSec({ fetchImpl = fetch, getContact = () => null } = {}) {
+  const ua = () => `Meridian Terminal ${getContact() || DEFAULT_CONTACT}`;
   const cache = new Map();
   const cached = (key, ttl, fn) => {
     const hit = cache.get(key);
@@ -28,11 +30,11 @@ export function createSec({ fetchImpl = fetch } = {}) {
   };
   // Every failure carries the real HTTP status (or "timeout" / "network"), so a panel can say
   // "SEC EDGAR answered HTTP 403" instead of guessing a reason.
-  const fail = (http, extra = '') => Object.assign(new Error(`SEC EDGAR answered HTTP ${http}${http === 403 ? ' (it refused the request; it limits automated access, so try again in a few minutes)' : http === 429 ? ' (too many requests; try again in a minute)' : ''}${extra}`), { status: http === 404 ? 404 : 502, http, source: 'SEC EDGAR' });
+  const fail = (http, extra = '') => Object.assign(new Error(`SEC EDGAR answered HTTP ${http}${http === 403 ? ' (it refused the request: it limits automated access, and it also wants a real contact address in the request; wait a few minutes, then see SECID in HELP)' : http === 429 ? ' (too many requests; try again in a minute)' : ''}${extra}`), { status: http === 404 ? 404 : 502, http, source: 'SEC EDGAR' });
   async function get(url, accept, timeout) {
     await throttle();
     try {
-      return await fetchImpl(url, { headers: { 'user-agent': UA, accept }, signal: AbortSignal.timeout(timeout) });
+      return await fetchImpl(url, { headers: { 'user-agent': ua(), accept }, signal: AbortSignal.timeout(timeout) });
     } catch (err) {
       if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw Object.assign(new Error(`SEC EDGAR didn't answer within ${timeout / 1000} s (timeout)`), { status: 504, http: 'timeout', source: 'SEC EDGAR' });
       throw Object.assign(new Error(`SEC EDGAR couldn't be reached (${err?.message || 'network error'})`), { status: 502, http: 'network', source: 'SEC EDGAR' });

@@ -46,7 +46,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const finnhub = createFinnhub({ getKey: () => keyStore.get('finnhub'), ...opts, WebSocketImpl });
   const fred = createFred({ getKey: () => keyStore.get('fred'), ...opts });
   const rates = createRates(opts);
-  const sec = createSec(opts);
+  const sec = createSec({ ...opts, getContact: () => keyStore.get('sec') });
   const fundamentals = createFundamentals({ sec, yahoo, finnhub, kvStore, log });
   const tenk = createTenK({ sec });
   // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
@@ -116,7 +116,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     { id: 'yahoo-quotes', name: 'Yahoo Finance · live quotes', used: 'Prices that refresh every few seconds', run: () => yahoo.probe.quotes(), ifFails: 'Meridian then reads prices from the chart data instead, which is slower.' },
     { id: 'yahoo-financials', name: 'Yahoo Finance · company financials', used: 'FA, KEYS, EPS, HOLD, PEERS margins; fills gaps in VAL, QUAL, CHECK', run: () => yahoo.probe.financials() },
     { id: 'sec-list', name: 'SEC EDGAR · company list (www.sec.gov)', used: 'Needed before any SEC figure; also FILE, SEG, RISK', run: () => sec.probe.list() },
-    { id: 'sec-figures', name: 'SEC EDGAR · reported figures (data.sec.gov)', used: 'VAL, DCF, QUAL, CAP, CHECK, COMPARE', run: () => sec.probe.figures(), ifFails: 'Those screens then use Yahoo (about 4 years of history instead of 10+).' },
+    { id: 'sec-figures', name: 'SEC EDGAR · reported figures (data.sec.gov)', used: 'VAL, DCF, QUAL, CAP, CHECK, COMPARE', run: () => sec.probe.figures(), ifFails: 'Those screens then use Yahoo and Finnhub (about 4 years of history instead of 10+). If it stays at HTTP 403, set your own contact address for the SEC with SECID <your email>.' },
     { id: 'finnhub', key: 'finnhub', name: 'Finnhub · real-time price', used: 'Real-time trades, news summaries, earnings estimates', run: () => finnhub.probe.quote() },
     { id: 'finnhub-financials', key: 'finnhub', name: 'Finnhub · financial statements', used: 'Third source for older years in VAL and QUAL', run: () => finnhub.probe.reported() },
     { id: 'fred', key: 'fred', name: 'FRED · US economic data', used: 'ECO', run: async () => (await fred.check()) && 'the key works' },
@@ -162,7 +162,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
       return {
         at: new Date().toISOString(), mock,
         version: { current, latest, updateAvailable: !!(current && latest && latest !== current) },
-        keys: Object.fromEntries(Object.keys(KEYS).map((k) => [k, !!keyStore.get(k)])),
+        keys: { ...Object.fromEntries(Object.keys(KEYS).map((k) => [k, !!keyStore.get(k)])), secContact: !!keyStore.get('sec') },
         checks, host,
       };
     })();
@@ -317,6 +317,13 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
       if (pathname === '/api/finnhub/stream') {
         finnhub.setStream((Array.isArray(body?.symbols) ? body.symbols : []).filter((s) => typeof s === 'string' && oneSym(s)));
         return finnhub.status();
+      }
+      if (pathname === '/api/sec/contact') {
+        // the contact the SEC asks every client to give; kept on this PC, never shown back
+        const v = String(body?.contact || '').trim();
+        if (v && !/^[^\s@<>"']{1,64}@[A-Za-z0-9.-]{1,80}\.[A-Za-z]{2,}$/.test(v)) throw new RouteError("That doesn't look like an email address.", 400);
+        await keyStore.set('sec', v || null);
+        return { ok: true, removed: !v };
       }
       const keyRoute = /^\/api\/(finnhub|fred)\/key$/.exec(pathname);
       if (keyRoute) return setKey(keyRoute[1], body?.key);

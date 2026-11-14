@@ -41,7 +41,7 @@ function report(d, mode, app) {
     `Runs on: ${hostText(d, app).replace(/<[^>]+>/g, '')}${d.host?.node ? `, Node ${d.host.node}` : ''}`,
     `Browser: ${navigator.userAgent}`,
     `Data mode: ${mode === 'live' ? 'real data' : 'simulation'}`,
-    `Keys: Finnhub ${d.keys.finnhub ? 'set' : 'not set'}, FRED ${d.keys.fred ? 'set' : 'not set'}`,
+    `Keys: Finnhub ${d.keys.finnhub ? 'set' : 'not set'}, FRED ${d.keys.fred ? 'set' : 'not set'}; SEC contact: ${d.keys.secContact ? 'your own' : 'Meridian default'}`,
     `Notifications: ${PERMISSION[notify.permission()] || notify.permission()}`,
     '',
     ...d.checks.map((c) => `${c.state === 'ok' ? '[OK]    ' : c.state === 'off' ? '[OFF]   ' : '[FAILED]'} ${c.name}: ${c.state === 'failed' ? `${typeof c.http === 'number' ? `HTTP ${c.http}` : c.http}: ${c.error}` : c.detail}${c.ms != null ? ` (${c.ms} ms)` : ''}`),
@@ -76,6 +76,7 @@ register({
         ['Data', E.mode === 'live' ? 'real' : 'simulation <span class="dim small">(MODE LIVE for real data)</span>'],
         ['Finnhub key', d.keys.finnhub ? 'set' : '<span class="dim">not set (optional)</span>'],
         ['FRED key', d.keys.fred ? 'set' : '<span class="dim">not set (optional)</span>'],
+        ['SEC contact', d.keys.secContact ? 'your own address (kept on this PC)' : '<span class="dim">Meridian default. If the SEC answers HTTP 403, set yours: <kbd>SECID your@email</kbd></span>'],
         ['Notifications', perm === 'granted' ? 'on' : `<span class="${perm === 'ask' ? 'dim' : 'st-bad'}">${PERMISSION[perm] || esc(perm)}</span>`],
       ];
       const rows = d.checks.map((c) => {

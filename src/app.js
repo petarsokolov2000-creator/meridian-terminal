@@ -335,6 +335,7 @@ class App {
     if (up[0] === 'UPDATE' || up[0] === 'VERSION') return this.checkUpdate(true);
     if (up[0] === 'FINNHUB') return this.keyCommand('finnhub', toks[1]);
     if (up[0] === 'FRED') return this.keyCommand('fred', toks[1]);
+    if (up[0] === 'SECID') return this.secContact(toks[1]);
     if (up[0] === 'MODE') {
       const want = up[1] === 'SIM' ? 'sim' : up[1] === 'LIVE' ? 'live' : null;
       if (!want) return this.toast(`Data: ${engine.mode === 'live' ? 'real (Yahoo Finance)' : 'simulated'}. Switch with MODE LIVE or MODE SIM.`);
@@ -436,6 +437,21 @@ class App {
   }
 
   // FINNHUB/FRED <key> saves a key on the PC running the server; <name> OFF removes it.
+  // SECID <email>: the contact address the SEC asks every client to send (kept on this PC); SECID OFF removes it.
+  async secContact(arg) {
+    if (engine.mode !== 'live') return this.toast('SECID works with real data only: switch with MODE LIVE first.');
+    if (!arg) return this.toast('SECID <your email> sets the contact address Meridian gives the SEC (EDGAR asks for one; it stays on this PC and goes only to the SEC). SECID OFF removes it. Check the result with STATUS.');
+    const contact = /^off$/i.test(arg) ? '' : arg;
+    try {
+      const res = await fetch('/api/sec/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contact }) });
+      const body = await res.json().catch(() => ({ error: `Server answered ${res.status}` }));
+      if (!res.ok || body.error) return this.toast(body.error || 'Saving failed', 'err');
+      this.toast(contact ? 'SEC contact saved on this PC. Run STATUS and press "Test again" to see whether the SEC now answers.' : 'SEC contact removed (Meridian\'s default is used again).', 'ok');
+    } catch {
+      this.toast('The Meridian server is not running (start it with Start Meridian.cmd).', 'err');
+    }
+  }
+
   async keyCommand(id, arg) {
     const label = id === 'fred' ? 'FRED' : 'Finnhub';
     if (!arg) {
@@ -521,8 +537,8 @@ class App {
     let hp = -1;
     this.sel = -1;
     input.addEventListener('input', () => {
-      // Upper-case everything except an API key typed after FINNHUB or FRED (keys are case-sensitive).
-      const m = /^(\s*(?:finnhub|fred)\s+)(.*)$/i.exec(input.value);
+      // Upper-case everything except an API key typed after FINNHUB or FRED, or an address after SECID (keys are case-sensitive).
+      const m = /^(\s*(?:finnhub|fred|secid)\s+)(.*)$/i.exec(input.value);
       input.value = m ? m[1].toUpperCase() + m[2] : input.value.toUpperCase();
       this.sel = -1;
       this.renderSuggest();

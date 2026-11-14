@@ -259,6 +259,17 @@ register({
     const E = ctx.engine;
     const peers = E.equities.filter((i) => i.sector === s.sector);
     const ret = (i, n) => i.last / i.history[Math.max(0, i.history.length - n)].c - 1;
+    // P/E only for positive earnings (a negative P/E means nothing)
+    const pe = (i) => (i.eps > 0 && i.last ? i.last / i.eps : null);
+    // Real data: the quote feed has no profit margin, so each peer's profile is fetched here
+    // (otherwise it only appeared after opening that company).
+    const marginState = new Map();
+    const marginCell = (i) => {
+      if (i.margin != null && Number.isFinite(i.margin)) return pct(i.margin, 1).replace('+', '');
+      const st = marginState.get(i.sym);
+      if (st === 'loading') return '<span class="dim" title="Loading the profit margin from Yahoo Finance">…</span>';
+      return `<span class="dim" title="${esc(st && st !== 'loading' ? `Yahoo Finance: ${st}` : 'Not reported')}">n/a</span>`;
+    };
     const t = new LiveTable(ctx.el, [
       { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
       { label: 'Name', value: (i) => esc(i.name), cls: 'l dim name' },
@@ -266,9 +277,9 @@ register({
       { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last },
       { label: 'Chg', value: (i) => pct(i.pct), cls: 'r', cellCls: (i) => dir(i.pct) },
       { label: 'Mkt cap', value: (i) => big(i.shares * i.last), cls: 'r' },
-      { label: 'P/E', value: (i) => num(i.last / i.eps, 1), cls: 'r' },
+      { label: 'P/E', title: 'Price ÷ earnings per share, last 12 months; n/a for losses', value: (i) => num(pe(i), 1), cls: 'r' },
       { label: 'Div yld', value: (i) => `${num(i.divYield, 2)}%`, cls: 'r' },
-      { label: 'Margin', value: (i) => pct(i.margin, 1).replace('+', ''), cls: 'r' },
+      { label: 'Margin', title: 'Net profit margin: net income ÷ revenue, last 12 months', value: marginCell, cls: 'r' },
       { label: '3M', value: (i) => pct(ret(i, 63), 1), cls: 'r', cellCls: (i) => dir(ret(i, 63)) },
       { label: '1Y', value: (i) => pct(ret(i, 259), 1), cls: 'r', cellCls: (i) => dir(ret(i, 259)) },
       { label: 'Beta 1Y', title: '1 year of daily returns vs the S&P 500 (Meridian)', value: (i) => num(i.histBeta, 2), cls: 'r dim' },
@@ -276,11 +287,35 @@ register({
     const update = () => t.set(peers.map((i) => Object.assign(i, { key: i.sym, rowCls: i === s ? 'self' : '' })));
     update();
     const median = (f) => {
-      const v = peers.map(f).sort((a, b) => a - b);
-      return v[v.length >> 1];
+      const v = peers.map(f).filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b);
+      if (!v.length) return null;
+      const m = v.length >> 1;
+      return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
     };
-    ctx.el.appendChild(el('p', 'note', `${esc(s.sector)} median P/E ${num(median((i) => i.last / i.eps), 1)} · ${esc(s.sym)} trades at ${num((s.last / s.eps) / median((i) => i.last / i.eps), 2)}× the peer median.`));
-    return { update };
+    const med = median(pe);
+    ctx.el.appendChild(el('p', 'note', `${esc(s.sector)} median P/E ${num(med, 1)}${pe(s) != null && med ? ` · ${esc(s.sym)} trades at ${num(pe(s) / med, 2)}× the peer median` : ''}. P/E median leaves out companies with losses.${E.mode === 'live' ? ' Margins: Yahoo Finance profiles, loaded for every peer when this opens.' : ''}`));
+    let gone = false;
+    if (E.mode === 'live' && typeof E.profile === 'function') {
+      const todo = peers.filter((i) => i.margin == null);
+      todo.forEach((i) => marginState.set(i.sym, 'loading'));
+      if (todo.length) update();
+      let next = 0;
+      // three at a time, so a big sector doesn't flood Yahoo
+      const worker = async () => {
+        while (next < todo.length && !gone) {
+          const i = todo[next++];
+          try {
+            await E.profile(i.sym);
+            marginState.delete(i.sym);
+          } catch (err) {
+            marginState.set(i.sym, err.message || 'failed');
+          }
+          if (!gone) update();
+        }
+      };
+      Promise.all([worker(), worker(), worker()]).catch(() => {});
+    }
+    return { update, destroy: () => { gone = true; } };
   },
 });
 

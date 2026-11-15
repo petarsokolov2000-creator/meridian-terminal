@@ -503,3 +503,10 @@ a.doc:hover { text-decoration: underline; }
 .note-ed .val-add input { width: auto; flex: 1 1 260px; }
 .notes details textarea { margin: 4px 0; }
 @media (max-width: 900px) { .note-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* INSIDER and SI */
+.txt-warn { color: var(--warn); }
+.ins-chart { width: 100%; height: auto; max-height: 170px; display: block; }
+.ins-all { margin-left: 12px; font-weight: normal; cursor: pointer; }
+.si-bar { display: inline-block; height: 8px; border-radius: 1px; min-width: 2px; max-width: 100%; }
+.si-facts td.l { white-space: normal; } .si-facts .small { margin: 1px 0 3px; }

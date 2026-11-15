@@ -336,7 +336,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         ownership: { insiders: raw(mh.insidersPercentHeld), institutions: raw(mh.institutionsPercentHeld), institutionsFloat: raw(mh.institutionsFloatPercentHeld), institutionCount: raw(mh.institutionsCount) },
         institutions: holders(r.institutionOwnership?.ownershipList),
         funds: holders(r.fundOwnership?.ownershipList),
-        insiders: (r.insiderTransactions?.transactions || []).slice(0, 40).map((t) => ({ name: t.filerName, relation: t.filerRelation, text: t.transactionText, date: raw(t.startDate), shares: raw(t.shares), value: raw(t.value) })),
+        insiders: (r.insiderTransactions?.transactions || []).slice(0, 120).map((t) => ({ name: t.filerName, relation: t.filerRelation, text: t.transactionText, date: raw(t.startDate), shares: raw(t.shares), value: raw(t.value) })),
         stats: {
           marketCap: raw(sd.marketCap), ev: raw(ks.enterpriseValue), trailingPE: raw(sd.trailingPE), forwardPE: raw(sd.forwardPE) ?? raw(ks.forwardPE), peg: raw(ks.pegRatio),
           priceToSales: raw(sd.priceToSalesTrailing12Months), priceToBook: raw(ks.priceToBook), evRevenue: raw(ks.enterpriseToRevenue), evEbitda: raw(ks.enterpriseToEbitda),
@@ -345,7 +345,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
           totalCash: raw(fd.totalCash), totalDebt: raw(fd.totalDebt), fcf: raw(fd.freeCashflow), ocf: raw(fd.operatingCashflow),
           beta: raw(sd.beta) ?? raw(ks.beta), high52: raw(sd.fiftyTwoWeekHigh), low52: raw(sd.fiftyTwoWeekLow), change52: raw(ks['52WeekChange']), ma50: raw(sd.fiftyDayAverage), ma200: raw(sd.twoHundredDayAverage),
           avgVolume: raw(sd.averageVolume), avgVolume10d: raw(sd.averageVolume10days), shares: raw(ks.sharesOutstanding), float: raw(ks.floatShares),
-          sharesShort: raw(ks.sharesShort), shortRatio: raw(ks.shortRatio), shortFloat: raw(ks.shortPercentOfFloat), sharesShortPrior: raw(ks.sharesShortPriorMonth),
+          sharesShort: raw(ks.sharesShort), shortRatio: raw(ks.shortRatio), shortFloat: raw(ks.shortPercentOfFloat), sharesShortPrior: raw(ks.sharesShortPriorMonth), shortDate: raw(ks.dateShortInterest), sharesOut: raw(ks.sharesOutstanding),
           dividendRate: raw(sd.dividendRate), dividendYield: raw(sd.dividendYield), payoutRatio: raw(sd.payoutRatio), exDividend: raw(sd.exDividendDate), avgYield5y: raw(sd.fiveYearAvgDividendYield),
           bookValue: raw(ks.bookValue), trailingEps: raw(ks.trailingEps), forwardEps: raw(ks.forwardEps), lastSplit: ks.lastSplitFactor || null, lastSplitDate: raw(ks.lastSplitDate),
           fiscalYearEnd: raw(ks.lastFiscalYearEnd), mostRecentQuarter: raw(ks.mostRecentQuarter),

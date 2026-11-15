@@ -146,11 +146,11 @@ register({
       ctx.el.innerHTML = `<div class="port-head">${[['Insiders', pc(o.insiders)], ['Institutions', pc(o.institutions)], ['Institutions (of float)', pc(o.institutionsFloat)], ['Institutional holders', num(o.institutionCount, 0)]].map(([k, v]) => `<div><span class="dim">${k}</span><b>${v}</b></div>`).join('')}</div>
         <div class="split2"><div class="pane"><h3>Top institutions</h3>${holders(d.institutions)}</div><div class="pane"><h3>Top funds</h3>${holders(d.funds)}</div></div>
         <div class="pane"><h3>Insider transactions</h3>${d.insiders.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Insider</th><th class="l">Role</th><th class="l">Transaction</th><th class="r">Shares</th><th class="r">Value</th></tr></thead><tbody>
-        ${d.insiders.map((t) => {
+        ${d.insiders.slice(0, 40).map((t) => {
           const kind = /sale|sold/i.test(t.text || '') ? 'down' : /purchase|buy|bought/i.test(t.text || '') ? 'up' : '';
           return `<tr><td class="l dim">${date(t.date)}</td><td class="l">${esc(t.name)}</td><td class="l dim">${esc(t.relation || '')}</td><td class="l ${kind}">${esc(t.text || 'Award / exercise')}</td><td class="r">${big(t.shares)}</td><td class="r">${t.value ? big(t.value) : '—'}</td></tr>`;
         }).join('')}</tbody></table></div>` : '<p class="note">No insider transactions reported.</p>'}
-        <p class="note">Source: Yahoo Finance (from SEC Forms 3/4/5 and 13F). Holdings are reported quarterly, so "As of" dates lag. Original insider forms: <kbd>${esc(ctx.sec.sym)} FILE</kbd>.</p></div>`;
+        <p class="note">Source: Yahoo Finance (from SEC Forms 3/4/5 and 13F). Holdings are reported quarterly, so "As of" dates lag. Original insider forms: <kbd>${esc(ctx.sec.sym)} FILE</kbd>. Only the real open-market buys and sales, with totals and a signal: <kbd>${esc(ctx.sec.sym)} INSIDER</kbd>.</p></div>`;
     });
   },
 });

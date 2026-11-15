@@ -43,9 +43,9 @@ longer history when you pick them.
 | --- | --- | --- |
 | `AAPL FIN` | Income statement, balance sheet and cash flow, **annual (5 years) or quarterly (8 quarters)**, with margins and change vs the prior period | Yahoo Finance |
 | `AAPL EPS` | Reported vs expected EPS (beats/misses), analysts' EPS and revenue estimates for this/next quarter and year | Yahoo Finance |
-| `AAPL HOLD` | Insider and institutional ownership, top institutions and funds, recent insider buys and sales | Yahoo Finance |
+| `AAPL HOLD` | Insider and institutional ownership, top institutions and funds, recent insider buys and sales (`INSIDER` goes deeper) | Yahoo Finance |
 | `AAPL DVD` | Every dividend on record, yearly totals and growth, trailing yield, stock splits | Yahoo Finance |
-| `AAPL KEYS` | Valuation multiples, margins and returns, balance-sheet ratios, short interest, moving averages, dividend data | Yahoo Finance |
+| `AAPL KEYS` | Valuation multiples, margins and returns, balance-sheet ratios, short interest (`SI` goes deeper), moving averages, dividend data | Yahoo Finance |
 | `AAPL FILE` | Official SEC filings (10-K, 10-Q, 8-K, insider Forms 3/4/5, proxies, 13D/G) with links to the documents | SEC EDGAR |
 
 These also work for any ticker you add. SEC filings exist for companies listed in the US.
@@ -168,7 +168,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | Area | Codes |
 | --- | --- |
 | Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
 | News | `NEWS` `CN` `FILE` |
@@ -190,6 +190,16 @@ New in this release, in plain words:
 - `BQL`: your own screens as formulas: `BQL ALL: px, ret6m / vol AS ratio WHERE pe < 20 SORT ratio DESC TOP 15`.
 - `REV`: analyst EPS estimates now against 7/30/60/90 days ago, who raised or cut, price targets, latest rating changes;
   `REV WATCH` or `REV PORT` ranks your whole list by how estimates are moving.
+- `INSIDER`: insider trades of one stock (`AAPL INSIDER`): only real open-market buys and sells count (awards, option
+  exercises, tax withholding and gifts are hidden unless you tick the box). Totals for 30/90/180 days, a 12-month chart, a
+  one-word signal (cluster buying = 3+ different insiders within 30 days, executive buying, net buying, mixed, selling only)
+  and what each purchase is worth now. Trades under $10,000 are shown but not counted. Selling is never marked as a warning:
+  insiders sell for many reasons, they buy for one. `INSIDER WATCH`, `INSIDER PORT` or `INSIDER MARKET` ranks a whole list.
+  Limits: Yahoo lists at most the latest 120 filings and does not mark pre-planned (10b5-1) sales.
+- `SI`: short interest of one stock (`TSLA SI`): shares sold short, percent of the float, days to cover, change against the
+  report a month earlier, a squeeze check (15%+ of the float and 4+ days to cover) and a history that builds up on your
+  device. If you hold the stock short in `PORT`, it says so. `SI WATCH`, `SI PORT` or `SI MARKET` ranks a list.
+  Limits: the exchanges publish short interest twice a month, so the numbers are 1-3 weeks old; borrow cost is paid data.
 - `CRED`: debt-safety scorecard from the filings (leverage, interest cover, cash flow and cash against debt, liquidity).
   Not a credit rating: agency ratings, bond prices and CDS are paid data.
 - **Percent alerts** (`ALRT`): `ALRT AAPL -8% HIGH` (falls 8% from its high; the level follows new highs while Meridian is open),

@@ -20,6 +20,37 @@ function rng(seed) {
 }
 const base = (s) => BASE[s] ?? 20 + (seedOf(s) % 400);
 
+// Insider trades and short interest that differ by symbol (the same shape Yahoo returns), so INSIDER
+// and SI have something to rank: AAPL is selling-only, MSFT has cluster buying, and so on.
+const dayAgo = (n) => Math.floor(Date.now() / 1000) - n * 86400;
+function mockInsiders(sym, px) {
+  const t = (name, rel, text, ago, shares, price) => ({ filerName: name, filerRelation: rel, transactionText: text, startDate: { raw: dayAgo(ago), fmt: '' }, shares: { raw: shares }, value: price ? { raw: Math.round(shares * price) } : { raw: 0 } });
+  const buy = (name, rel, ago, shares) => t(name, rel, `Purchase at price ${(px * 0.98).toFixed(2)} per share.`, ago, shares, px * 0.98);
+  const sell = (name, rel, ago, shares) => t(name, rel, `Sale at price ${(px * 1.03).toFixed(2)} per share.`, ago, shares, px * 1.03);
+  const award = (name, rel, ago, shares) => t(name, rel, 'Stock Award(Grant) at price 0.00 per share.', ago, shares, 0);
+  const gift = (name, rel, ago, shares) => t(name, rel, 'Stock Gift at price 0.00 per share.', ago, shares, 0);
+  const exer = (name, rel, ago, shares) => t(name, rel, 'Conversion of Exercise of derivative security at price 50.00 per share.', ago, shares, 50);
+  const q = Math.max(100, Math.round(2e5 / px));
+  const kind = seedOf(sym) % 5;
+  const common = [award('SMITH JANE', 'Director', 40, 2000), gift('LEE ROBERT', 'Director', 75, 500), exer('PARK DAVID', 'Chief Financial Officer', 33, 8000), buy('TINY BUYER', 'Director', 20, Math.max(1, Math.round(4000 / px)))];
+  if (sym === 'AAPL') return [sell('COOK TIMOTHY D', 'Chief Executive Officer', 44, 108136), sell('MAESTRI LUCA', 'Chief Financial Officer', 70, 30000), sell('ADAMS KATE', 'General Counsel', 120, 20000), ...common];
+  if (sym === 'MSFT') return [buy('NADELLA SATYA', 'Chief Executive Officer', 12, q), buy('HOOD AMY', 'Chief Financial Officer', 9, q * 0.4 | 0), buy('SMITH BRAD', 'President', 7, q * 0.6 | 0), buy('PAGE JOHN', 'Director', 20, q * 0.2 | 0), sell('TURNER BEN', 'Chief Operating Officer', 150, q * 2), ...common];
+  if (kind === 0) return [buy('ROSS ALEX', 'Chief Executive Officer', 25, q), buy('KIM SORA', 'Director', 110, q * 0.5 | 0), ...common];
+  if (kind === 1) return [sell('GREEN NOAH', 'Chief Executive Officer', 15, q * 3), sell('WOOD EMMA', 'Director', 60, q), buy('GRAY LEO', 'Director', 200, q * 0.3 | 0), ...common];
+  if (kind === 2) return [sell('BLUE SAM', 'President', 30, q * 2), ...common];
+  if (kind === 3) return [buy('DAY FRANK', 'Director', 55, q * 0.8 | 0), buy('NIGHT MIA', 'Director', 48, q * 0.6 | 0), buy('NOON PAUL', 'Chief Executive Officer', 40, q), sell('EVE KARL', 'Chief Operating Officer', 90, q * 0.5 | 0), ...common];
+  return common;
+}
+function mockShort(sym) {
+  const mv = (x) => ({ raw: x, fmt: String(x) });
+  const r = (seedOf(`${sym}short`) % 1000) / 1000;
+  const pf = sym === 'AAPL' ? 0.008 : sym === 'TSLA' ? 0.21 : 0.005 + r * r * 0.25;
+  const short = Math.round(pf * 1.49e10);
+  const dtc = sym === 'AAPL' ? 2.1 : 0.6 + ((seedOf(`${sym}d`) % 100) / 100) * 9;
+  const prior = 0.7 + ((seedOf(`${sym}p`) % 100) / 100) * 0.7;
+  return { sharesShort: mv(short), shortRatio: mv(+dtc.toFixed(2)), shortPercentOfFloat: mv(+pf.toFixed(4)), sharesShortPriorMonth: mv(Math.round(short * prior)), dateShortInterest: mv(dayAgo(12)) };
+}
+
 function series(s, n, stepSec, end, vol) {
   const r = rng(seedOf(s + stepSec));
   let p = base(s) * (0.85 + r() * 0.2);
@@ -146,8 +177,8 @@ function summary(s) {
         majorHoldersBreakdown: { insidersPercentHeld: v(0.021), institutionsPercentHeld: v(0.612), institutionsFloatPercentHeld: v(0.625), institutionsCount: v(6800) },
         institutionOwnership: { ownershipList: [['Vanguard Group Inc', 0.092], ['Blackrock Inc.', 0.071], ['State Street Corp', 0.038]].map(([o, p]) => ({ organization: o, pctHeld: v(p), position: v(p * 1.5e10), value: v(p * 3.4e12), reportDate: v(Math.floor(Date.UTC(2026, 5, 30) / 1000)) })) },
         fundOwnership: { ownershipList: [{ organization: 'Vanguard Total Stock Market Index Fund', pctHeld: v(0.03), position: v(4.5e8), value: v(1e11), reportDate: v(Math.floor(Date.UTC(2026, 5, 30) / 1000)) }] },
-        insiderTransactions: { transactions: [{ filerName: 'COOK TIMOTHY D', filerRelation: 'Chief Executive Officer', transactionText: 'Sale at price 228.00 per share.', startDate: v(Math.floor(Date.UTC(2026, 9, 2) / 1000)), shares: v(108136), value: v(24655008) }] },
-        defaultKeyStatistics: { priceToBook: v(50), enterpriseValue: v(3.5e12), enterpriseToEbitda: v(26), enterpriseToRevenue: v(9), forwardPE: v(30), pegRatio: v(2.1), sharesOutstanding: v(1.5e10), floatShares: v(1.49e10), sharesShort: v(1.2e8), shortRatio: v(2.1), shortPercentOfFloat: v(0.008), sharesShortPriorMonth: v(1.1e8), bookValue: v(4.6), trailingEps: v(6.1), forwardEps: v(7.1), '52WeekChange': v(0.18), lastSplitFactor: '4:1', lastSplitDate: v(1598832000), lastFiscalYearEnd: v(1790985600), mostRecentQuarter: v(1790985600) },
+        insiderTransactions: { transactions: mockInsiders(s, base(s)) },
+        defaultKeyStatistics: { priceToBook: v(50), enterpriseValue: v(3.5e12), enterpriseToEbitda: v(26), enterpriseToRevenue: v(9), forwardPE: v(30), pegRatio: v(2.1), sharesOutstanding: v(1.5e10), floatShares: v(1.49e10), ...mockShort(s), bookValue: v(4.6), trailingEps: v(6.1), forwardEps: v(7.1), '52WeekChange': v(0.18), lastSplitFactor: '4:1', lastSplitDate: v(1598832000), lastFiscalYearEnd: v(1790985600), mostRecentQuarter: v(1790985600) },
         summaryDetail: { beta: v(1.2), marketCap: v(3.4e12), trailingPE: v(37), forwardPE: v(30), priceToSalesTrailing12Months: v(8.7), fiftyTwoWeekHigh: v(260), fiftyTwoWeekLow: v(169), fiftyDayAverage: v(225), twoHundredDayAverage: v(215), averageVolume: v(5.2e7), averageVolume10days: v(4.8e7), dividendRate: v(1.04), dividendYield: v(0.0046), payoutRatio: v(0.16), exDividendDate: v(1793318400), fiveYearAvgDividendYield: v(0.56) },
       }],
       error: null,

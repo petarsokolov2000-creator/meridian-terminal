@@ -24,6 +24,7 @@ import './functions/mars.js';
 import './functions/bql.js';
 import './functions/analysts.js';
 import './functions/notes.js';
+import './functions/insider.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [

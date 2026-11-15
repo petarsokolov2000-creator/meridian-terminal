@@ -488,3 +488,18 @@ a.doc:hover { text-decoration: underline; }
 @media (max-width: 900px) { .ovme input[type=number] { width: 70px; } .ovme-top label:first-child { flex: 1 1 100%; } .ovme-top select { max-width: none; width: 100%; min-width: 0; } .ovme-top label:first-child select { flex: 1; } }
 .supp-map.multi { overflow-x: auto; }
 .supp-map.multi svg { display: block; }
+
+/* NOTE / NOTES */
+.note-head { padding: 8px 8px 2px; }
+.note-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; padding: 6px 8px 10px; align-items: end; }
+.note-form label { display: flex; flex-direction: column; gap: 3px; color: var(--dim); min-width: 0; }
+.note-form input, .note-form textarea, .notes textarea, .note-ed .val-add input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 4px 6px; font: inherit; width: 100%; box-sizing: border-box; }
+.note-form .note-why, .note-form .note-actions, .note-form .note-msg, .note-form .note-sides { grid-column: 1 / -1; }
+.note-form textarea, .notes textarea { resize: vertical; }
+.note-sides { display: flex; gap: 4px; }
+.note-sides .tb { padding: 4px 16px; font-size: 12px; }
+.note-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.note-msg { min-height: 1em; margin: 0; }
+.note-ed .val-add input { width: auto; flex: 1 1 260px; }
+.notes details textarea { margin: 4px 0; }
+@media (max-width: 900px) { .note-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

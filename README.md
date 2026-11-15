@@ -192,6 +192,14 @@ New in this release, in plain words:
   `REV WATCH` or `REV PORT` ranks your whole list by how estimates are moving.
 - `CRED`: debt-safety scorecard from the filings (leverage, interest cover, cash flow and cash against debt, liquidity).
   Not a credit rating: agency ratings, bond prices and CDS are paid data.
+- **Percent alerts** (`ALRT`): `ALRT AAPL -8% HIGH` (falls 8% from its high; the level follows new highs while Meridian is open),
+  `ALRT AAPL +5%` / `-5%` (from the price now), `ALRT AAPL DAY -3%` (a one-day move; `DAY 3%` = either way), or the form on
+  the ALRT screen. Price-level and "from now" alerts are also watched by the phone app while it is closed; one-day moves are
+  only checked while Meridian is open.
+- `NOTE` / `NOTES`: your own note per security (long, short or watching; why; entry, target, stop; a dated journal) with your
+  profit/loss from your side of the trade, a button that sets price alerts for target and stop, a note line in `DES`, a Note
+  column in `WATCH`, and `NOTES` for all of them with a backup box. Typed: `AAPL NOTE LONG target 280 stop 210 why`.
+  Notes stay on the device; the PC and phone don't share them.
 - `SUPP` now also draws the indirect chain on the map (suppliers of suppliers, customers of customers: `SUPP TSM 3`, or the 1/2/3 tiers buttons; the map stops where no links are on file) and
   lets you add your own links (`SUPP ADD <supplier> <customer> <what>`), saved on your device and marked "yours".
   The built-in list is a hand-checked snapshot of notable relationships, not a data feed with hundreds of links per company.

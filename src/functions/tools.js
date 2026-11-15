@@ -6,6 +6,7 @@ import { XYChart } from '../chart.js';
 import { logReturns, corr } from '../studies.js';
 import { SECTORS } from '../universe.js';
 import * as notify from '../notify.js';
+import { hiLoOf } from '../metrics.js';
 
 register({
   code: 'NEWS', aliases: ['TOP', 'N', 'NI'], name: 'News headlines', cat: 'News',
@@ -454,11 +455,57 @@ const backgroundable = (i) => !!(i && i.ysym && !i.eod);
 function saveAlerts(list, E) {
   save('alerts', list);
   if (E.mode !== 'live') return;
-  const rows = list.filter((x) => !x.hit).map((x) => [x, E.get(x.sym)]).filter(([, i]) => backgroundable(i))
+  const rows = list.filter((x) => !x.hit && x.kind !== 'day').map((x) => [x, E.get(x.sym)]).filter(([, i]) => backgroundable(i))
     .map(([x, i]) => ({ id: x.id, sym: x.sym, y: i.ysym, op: x.op, v: x.v, dp: i.dp, s10: i.cls === 'BOND' }));
   notify.syncAlerts(rows);
 }
-const word = (op) => (op === '>' ? 'above' : 'below');
+// Percent alerts (kind): 'rel' = up or down X% from the price when set (stored as an ordinary price level, so the
+// phone can watch it while closed); 'high' = falls X% from the highest price since set (a trailing level that
+// follows new highs while Meridian is open); 'day' = moves X% in one day (only while Meridian is open).
+export const pctOk = (i) => !!i && i.cls !== 'BOND' && !i.additive && Number.isFinite(i.last);
+const fx = (v, dp) => num(v, dp);
+const pp = (x) => num(x.pct * 100, (x.pct * 100) % 1 ? 1 : 0);
+export function condText(x, i) {
+  const dp = i?.dp ?? 2;
+  if (x.kind === 'rel') return `${x.op === '>' ? '+' : '−'}${pp(x)}% from ${fx(x.ref, dp)} (${x.op} ${fx(x.v, dp)})`;
+  if (x.kind === 'high') return `falls ${pp(x)}% from its high ${fx(x.peak, dp)} (below ${fx(x.v, dp)})`;
+  if (x.kind === 'day') return `moves ${x.dir === 'up' ? '+' : x.dir === 'down' ? '−' : '±'}${pp(x)}% in one day`;
+  return `${x.op} ${fx(x.v, dp)}`;
+}
+const alertReached = (x, i) => {
+  if (x.kind === 'day') {
+    const d = i.pct;
+    if (!Number.isFinite(d)) return false;
+    return x.dir === 'up' ? d >= x.pct : x.dir === 'down' ? d <= -x.pct : Math.abs(d) >= x.pct;
+  }
+  return (x.op === '>' && i.last > x.v) || (x.op === '<' && i.last < x.v);
+};
+/** spec { kind: 'rel'|'high'|'day', pct (fraction), dir: 'up'|'down'|'any' } -> an alert object, or a string saying why not. */
+export function buildAlert(i, spec) {
+  if (!pctOk(i)) return `Percent alerts don't work for ${i?.sym || 'this'} (yields and rates aren't priced in percent).`;
+  const { kind, pct } = spec;
+  if (!(pct >= 0.001 && pct <= (kind === 'rel' && spec.dir === 'up' ? 5 : 0.99))) return 'Use a percentage between 0.1% and 99% (up to 500% for a rise).';
+  if (kind === 'rel') {
+    const up = spec.dir === 'up';
+    return { sym: i.sym, kind, pct, ref: i.last, op: up ? '>' : '<', v: i.last * (up ? 1 + pct : 1 - pct) };
+  }
+  if (kind === 'high') {
+    const peak = Math.max(hiLoOf(i)?.hi ?? 0, i.last);
+    const v = peak * (1 - pct);
+    if (i.last <= v) return `${i.sym} is already ${num((1 - i.last / peak) * 100, 1)}% below its high (${fx(peak, i.dp)}), so an alert at ${num(pct * 100, 1)}% would fire at once. Pick a bigger percentage, or use a price alert.`;
+    return { sym: i.sym, kind, pct, peak, op: '<', v };
+  }
+  if (kind === 'day') return { sym: i.sym, kind, pct, dir: spec.dir || 'any', op: spec.dir === 'down' ? '<' : '>', v: null };
+  return 'Unknown alert type.';
+}
+/** Add an alert object (from buildAlert, or { sym, op, v }) unless the same one is already waiting. Returns true if added. */
+export function createAlert(E, obj) {
+  const list = loadAlerts();
+  if (list.some((x) => !x.hit && x.sym === obj.sym && (x.kind || 'abs') === (obj.kind || 'abs') && x.op === obj.op && Math.abs((x.v ?? 0) - (obj.v ?? 0)) < 1e-9 && x.pct === obj.pct && x.dir === obj.dir)) return false;
+  list.push({ id: newId(), hit: false, ...obj });
+  saveAlerts(list, E);
+  return true;
+}
 const stamp = (ts) => new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** Phone: alerts the app triggered while Meridian was closed. Marks them and says so; also re-syncs. */
@@ -474,7 +521,7 @@ export function collectBackgroundAlerts(E, toast) {
     x.hitTs = f.at;
     x.hitAt = stamp(f.at);
     x.hitPx = f.price;
-    toast(`ALERT while Meridian was closed: ${x.sym} ${x.op} ${num(x.v, i?.dp ?? 2)} — price ${num(f.price, i?.dp ?? 2)} at ${x.hitAt}`, 'alert');
+    toast(`ALERT while Meridian was closed: ${x.sym} ${condText(x, i)} — price ${num(f.price, i?.dp ?? 2)} at ${x.hitAt}`, 'alert');
   }
   saveAlerts(list, E);
 }
@@ -499,31 +546,75 @@ function notifyLine(E) {
 
 register({
   code: 'ALRT', aliases: ['ALERT', 'ALERTS'], name: 'Price alerts', cat: 'Trading',
-  help: 'ALRT <ticker> > <price> (above) · ALRT <ticker> < <price> (below) · ALRT DEL <n> · ALRT',
+  help: 'ALRT <ticker> > <price> · ALRT <ticker> < <price> · ALRT <ticker> -8% HIGH (falls 8% from its high) · ALRT <ticker> +5% (from now) · ALRT <ticker> DAY -3% (one-day move) · ALRT DEL <n>',
   run(ctx) {
     const E = ctx.engine;
     const a = ctx.args.map((x) => x.toUpperCase());
     let list = loadAlerts();
+    const afterAdd = () => {
+      // the first alert is the moment to ask (asking needs a key press or tap, which this is)
+      if (E.mode === 'live' && notify.permission() === 'ask') notify.request().then(() => update());
+    };
     const add = (sym, op, v) => {
       list.push({ id: newId(), sym, op, v, hit: false });
       saveAlerts(list, E);
       ctx.app.toast(`Alert set: ${sym} ${op} ${v}`);
-      // the first alert is the moment to ask (asking needs a key press or tap, which this is)
-      if (E.mode === 'live' && notify.permission() === 'ask') notify.request().then(() => update());
+      afterAdd();
+    };
+    const addPct = (i, spec) => {
+      const al = buildAlert(i, spec);
+      if (typeof al === 'string') return ctx.app.toast(al, 'err');
+      list = loadAlerts();
+      list.push({ id: newId(), hit: false, ...al });
+      saveAlerts(list, E);
+      ctx.app.toast(`Alert set: ${i.sym} ${condText(al, i)}${al.kind === 'day' ? ' (checked while Meridian is open)' : ''}`);
+      afterAdd();
     };
     const OPS = { '>': '>', '<': '<', ABOVE: '>', OVER: '>', BELOW: '<', UNDER: '<' };
+    const NUM = /^([+\-−]?)(\d+(?:\.\d+)?)(%?)$/;
+    const rest = a.slice(1);
+    const kw = rest.find((t) => ['HIGH', 'PEAK', 'TRAIL', 'DAY', 'TODAY'].includes(t));
+    const numTok = rest.map((t) => NUM.exec(t)).find(Boolean);
     if (a[0] === 'DEL' && a[1]) {
       list.splice(Number(a[1]) - 1, 1);
       saveAlerts(list, E);
     } else if (a.length >= 3 && E.get(a[0]) && OPS[a[1]] && a[2] !== '' && Number.isFinite(Number(a[2]))) {
       add(E.get(a[0]).sym, OPS[a[1]], Number(a[2]));
+    } else if (a.length >= 2 && E.get(a[0]) && numTok && (numTok[3] || kw)) {
+      // percent alerts: ALRT AAPL -8% HIGH · ALRT AAPL +5% · ALRT AAPL DAY -3%
+      const sign = numTok[1] === '-' || numTok[1] === '−' ? -1 : numTok[1] === '+' ? 1 : 0;
+      const pct = Number(numTok[2]) / 100;
+      const i = E.get(a[0]);
+      if (['HIGH', 'PEAK', 'TRAIL'].includes(kw)) addPct(i, { kind: 'high', pct });
+      else if (kw) addPct(i, { kind: 'day', pct, dir: sign > 0 ? 'up' : sign < 0 ? 'down' : 'any' });
+      else if (sign === 0) ctx.app.toast(`Say which way: ALRT ${i.sym} +${numTok[2]}% (rises) or -${numTok[2]}% (falls), or add HIGH (falls from the high) or DAY (one-day move).`, 'err');
+      else addPct(i, { kind: 'rel', pct, dir: sign > 0 ? 'up' : 'down' });
     } else if (a.length >= 2 && E.get(a[0])) {
       const m = a.slice(1).join('').match(/^([<>])(-?[\d.]+)$/);
       if (m && Number.isFinite(Number(m[2]))) add(E.get(a[0]).sym, m[1], Number(m[2]));
     }
     const info = el('p', 'note alrt-note');
+    const form = el('div', 'val-add alrt-form');
+    const defSym = ctx.app.panels.find((q) => q.sec && q.sec.cls === 'EQ')?.sec.sym || E.defaults.sec;
+    form.innerHTML = `<b>New alert</b> <input data-f="sym" value="${esc(defSym)}" size="8" maxlength="12" aria-label="Ticker" style="text-transform:uppercase">
+      <select data-f="kind" aria-label="Alert type"><option value="high|">falls from its high by</option><option value="rel|up">rises from now by</option><option value="rel|down">falls from now by</option><option value="day|any">moves in one day, either way, by</option><option value="day|up">rises in one day by</option><option value="day|down">falls in one day by</option><option value="abs|>">price goes above</option><option value="abs|<">price goes below</option></select>
+      <input data-f="v" type="number" step="any" value="8" size="6" inputmode="decimal" aria-label="Value"> <span data-unit>%</span> <button class="tb" data-addalert>Set alert</button>`;
+    const syncUnit = () => { form.querySelector('[data-unit]').textContent = form.querySelector('[data-f=kind]').value.startsWith('abs') ? 'price' : '%'; };
+    form.addEventListener('change', (e) => { if (e.target.dataset.f === 'kind') syncUnit(); });
+    form.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-addalert]')) return;
+      const q = (k) => form.querySelector(`[data-f=${k}]`).value.trim();
+      const i = E.get(q('sym').toUpperCase());
+      const [kind, dir] = q('kind').split('|');
+      const n = Number(q('v'));
+      if (!i) return ctx.app.toast(`I don't know "${q('sym').toUpperCase()}". Use a ticker Meridian has (type it in the command line once to add it).`, 'err');
+      if (!(n > 0)) return ctx.app.toast('Enter a number above zero.', 'err');
+      if (kind === 'abs') add(i.sym, dir, n);
+      else addPct(i, { kind, pct: n / 100, dir });
+      update();
+    });
     const host = el('div');
-    ctx.el.append(info, host);
+    ctx.el.append(info, form, host);
     let shown = '';
     const update = () => {
       list = store('alerts', []);
@@ -532,14 +623,14 @@ register({
       host.innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="r">#</th><th class="l">Ticker</th><th class="l">Condition</th><th class="r">Last</th><th class="r">Distance</th><th class="l">Status</th></tr></thead><tbody>
         ${list.map((x, k) => {
           const i = E.get(x.sym);
-          if (!i) return `<tr><td class="r dim">${k + 1}</td><td class="l">${esc(x.sym)}</td><td class="l">${esc(x.op)} ${num(x.v, 2)}</td><td class="r dim" colspan="2">not in the ${E.mode === 'live' ? 'real' : 'simulated'} data</td><td class="l dim">${x.hit ? `TRIGGERED ${esc(x.hitAt || '')}` : 'not watched'}</td></tr>`;
-          const dist = i.additive ? (x.v - i.last) * 100 : (x.v / i.last - 1) * 100;
+          if (!i) return `<tr><td class="r dim">${k + 1}</td><td class="l">${esc(x.sym)}</td><td class="l">${esc(condText(x, null))}</td><td class="r dim" colspan="2">not in the ${E.mode === 'live' ? 'real' : 'simulated'} data</td><td class="l dim">${x.hit ? `TRIGGERED ${esc(x.hitAt || '')}` : 'not watched'}</td></tr>`;
+          const dist = x.kind === 'day' ? i.pct * 100 : i.additive ? (x.v - i.last) * 100 : (x.v / i.last - 1) * 100;
           const status = x.hit
             ? `TRIGGERED ${esc(x.hitAt || '')}${Number.isFinite(x.hitPx) ? ` at ${num(x.hitPx, i.dp)}` : ''}${x.bg ? ' <span class="dim">(while closed)</span>' : ''}`
-            : `watching${E.mode === 'live' && notify.hasBackground() && !backgroundable(i) ? ' <span class="dim">(only while Meridian is open)</span>' : ''}`;
-          return `<tr><td class="r dim">${k + 1}</td><td class="l">${secLink(i)}</td><td class="l">${x.op} ${num(x.v, i.dp)}</td><td class="r">${px(i)}</td><td class="r dim">${signed(dist, i.additive ? 1 : 2, i.additive ? 'bp' : '%')}</td><td class="l ${x.hit ? 'up' : 'dim'}">${status}</td></tr>`;
+            : `watching${E.mode === 'live' && notify.hasBackground() && (!backgroundable(i) || x.kind === 'day') ? ' <span class="dim">(only while Meridian is open)</span>' : ''}`;
+          return `<tr><td class="r dim">${k + 1}</td><td class="l">${secLink(i)}</td><td class="l">${esc(condText(x, i))}</td><td class="r">${px(i)}</td><td class="r dim">${signed(dist, i.additive ? 1 : 2, i.additive ? 'bp' : '%')}</td><td class="l ${x.hit ? 'up' : 'dim'}">${status}</td></tr>`;
         }).join('')}</tbody></table></div>
-        <p class="note">Remove one with <kbd>ALRT DEL 1</kbd> (its number). Yahoo's prices can be 15–20 minutes behind the exchange, so an alert can come that much late.</p>` : `<div class="empty">No alerts. Example: <kbd>ALRT ${esc(E.defaults.sec)} &gt; ${Math.round(E.get(E.defaults.sec).last * 1.05)}</kbd> tells you when ${esc(E.defaults.sec)} trades above that price; use <kbd>&lt;</kbd> for below.</div>`;
+        <p class="note">Remove one with <kbd>ALRT DEL 1</kbd> (its number). Typed: <kbd>ALRT AAPL -8% HIGH</kbd> (falls 8% from its high), <kbd>ALRT AAPL +5%</kbd> / <kbd>-5%</kbd> (from the price now), <kbd>ALRT AAPL DAY -3%</kbd> (one-day move; <kbd>DAY 3%</kbd> = either way). The phone app watches price levels and "from now" alerts while it is closed; "falls from its high" uses the high as of the last time Meridian was open, and one-day moves are only checked while Meridian is open. Yahoo's prices can be 15–20 minutes behind the exchange, so an alert can come that much late.</p>` : `<div class="empty">No alerts yet. Use the form above, or type: <kbd>ALRT ${esc(E.defaults.sec)} &gt; ${Math.round(E.get(E.defaults.sec).last * 1.05)}</kbd> (price above; <kbd>&lt;</kbd> for below), <kbd>ALRT ${esc(E.defaults.sec)} -8% HIGH</kbd> (falls 8% from its high), <kbd>ALRT ${esc(E.defaults.sec)} +5%</kbd> (rises 5% from now), <kbd>ALRT ${esc(E.defaults.sec)} DAY -3%</kbd> (falls 3% in one day).</div>`;
     };
     info.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-notify]');
@@ -561,14 +652,20 @@ export function checkAlerts(E, toast) {
     if (x.hit) continue;
     const i = E.get(x.sym);
     if (!i || !Number.isFinite(i.last)) continue;
-    if ((x.op === '>' && i.last > x.v) || (x.op === '<' && i.last < x.v)) {
+    // a trailing alert follows new highs (the level it watches rises with them)
+    if (x.kind === 'high' && i.last > (x.peak ?? 0)) {
+      x.peak = i.last;
+      x.v = x.peak * (1 - x.pct);
+      changed = true;
+    }
+    if (alertReached(x, i)) {
       x.hit = true;
       x.hitTs = Date.now();
       x.hitAt = E.mode === 'live' ? stamp(x.hitTs) : E.timeLabel(); // real data: your local time; simulation: its own clock
       x.hitPx = i.last;
       changed = true;
-      toast(`ALERT ${x.sym} ${x.op} ${num(x.v, i.dp)} — last ${px(i)}`, 'alert');
-      if (E.mode === 'live') notify.show(x.id || x.sym, `${x.sym} ${word(x.op)} ${num(x.v, i.dp)}`, `Last price ${px(i)}. Meridian price alert.`);
+      toast(`ALERT ${x.sym} ${condText(x, i)} — last ${px(i)}`, 'alert');
+      if (E.mode === 'live') notify.show(x.id || x.sym, `${x.sym} ${condText(x, i)}`, `Last price ${px(i)}. Meridian price alert.`);
     }
   }
   if (changed) saveAlerts(list, E);

@@ -7,6 +7,7 @@ import { sparkline, XYChart } from '../chart.js';
 import { SECTORS, TENORS } from '../universe.js';
 import { fmtVal } from '../news.js';
 import { peek, isStock, marginOfSafety } from '../intrinsic.js';
+import { getNote, noteStats } from '../notes-data.js';
 
 const quoteCols = (E, extra = []) => [
   { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
@@ -74,6 +75,16 @@ register({
             return m == null ? '<span class="dim">—</span>' : `${m > 0 ? '+' : ''}${num(m * 100, 0)}%`;
           },
           cellCls: (i) => { const m = marginOfSafety(intr(i), i.last); return m == null ? 'dim' : m > 0 ? 'up' : 'down'; },
+        },
+        {
+          label: 'Note', title: 'Your own note on this security: L = long, S = short, W = watching, with your profit or loss since you noted it (open it with NOTE)',
+          cls: 'r',
+          value: (i) => {
+            const n = getNote(E.mode, i.sym);
+            if (!n) return '<span class="dim">—</span>';
+            const st = noteStats(n, i.last);
+            return `<span class="${n.side === 'SHORT' ? 'down' : n.side === 'LONG' ? 'up' : 'dim'}">${n.side[0]}</span>${st.pnl == null ? '' : ` ${Math.round(st.pnl * 1000) > 0 ? '+' : ''}${num(Math.round(st.pnl * 1000) / 10, 1)}%`}${st.stopHit ? ' <span class="tag down">STOP</span>' : st.targetReached ? ' <span class="tag up">TARGET</span>' : ''}`;
+          },
         },
         ...hiLo,
         { label: 'Volume', value: (i) => (i.volume ? big(i.volume) : '—'), cls: 'r dim' },

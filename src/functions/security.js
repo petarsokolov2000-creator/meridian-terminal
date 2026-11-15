@@ -8,6 +8,7 @@ import { Rng, hashString } from '../rng.js';
 import { SESSION_MIN } from '../engine.js';
 import { help } from '../glossary.js';
 import { intrinsic, isStock, marginOfSafety } from '../intrinsic.js';
+import { getNote, noteStats } from '../notes-data.js';
 
 const CLS_NAME = { EQ: 'Equity', IDX: 'Index', FX: 'Currency', CMDTY: 'Commodity', CRYPTO: 'Crypto', BOND: 'Govt bond' };
 
@@ -44,6 +45,23 @@ register({
     const body = el('div', 'desc');
     ctx.el.appendChild(body);
     // intrinsic value line (real company stocks only): fills in once the filings have loaded
+    // your own note on this security, if you wrote one
+    const nb = el('div', 'intr-box note-box');
+    const drawNote = () => {
+      const n = getNote(E.mode, s.sym);
+      nb.hidden = !n;
+      if (!n) return;
+      const st = noteStats(n, s.last);
+      const P = (v) => (v == null ? '—' : `<b class="${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${v > 0 ? '+' : ''}${num(Math.round(v * 1000) / 10, 1)}%</b>`);
+      nb.innerHTML = `<div class="intr-stat"><span class="intr-k">Your note</span><b class="intr-p ${n.side === 'SHORT' ? 'down' : n.side === 'LONG' ? 'up' : ''}">${n.side}</b><span class="dim small">since ${esc(n.entryAt || '?')}${Number.isFinite(n.entry) ? ` at ${num(n.entry, s.dp ?? 2)}` : ''}</span></div>
+        <div class="intr-stat"><span class="intr-k">${n.side === 'WATCH' ? 'Move since' : 'Your P&amp;L'}</span>${P(st.pnl)}</div>
+        <div class="intr-stat"><span class="intr-k">To target</span>${st.targetReached ? '<b class="up">reached</b>' : P(st.toTarget)}</div>
+        <div class="intr-stat"><span class="intr-k">Cushion to stop</span>${st.stopHit ? '<b class="down">hit</b>' : P(st.cushion)}</div>
+        <p class="dim small intr-note">${esc((n.reason || n.log?.[0]?.text || '').slice(0, 220))} <a href="#" data-opennote>Open note</a></p>`;
+    };
+    nb.addEventListener('click', (e) => {
+      if (e.target.closest('[data-opennote]')) { e.preventDefault(); ctx.app.run(`${s.sym} NOTE`, ctx.panel); }
+    });
     const ib = el('div', 'intr-box');
     let ires = null;
     let gone = false;
@@ -59,6 +77,8 @@ register({
         <div class="intr-stat"><span class="intr-k">Margin of safety${help('marginOfSafety')}</span><b class="intr-p ${m > 0 ? 'up' : 'down'}">${m > 0 ? '+' : ''}${num(m * 100, 0)}%</b><span class="dim small">${m > 0 ? 'price below value' : 'price above value'}</span></div>
         <p class="dim small intr-note">${esc(ires.note)} An estimate from stated assumptions, not a fact: open <kbd>${esc(s.sym)} ${ires.kind === 'graham' ? 'VAL' : 'DCF'}</kbd> to change them.</p>`;
     };
+    body.before(nb);
+    drawNote();
     if (isStock(E, s)) {
       body.before(ib);
       ib.innerHTML = '<span class="dim">Intrinsic value: loading the company filings…</span>';
@@ -104,7 +124,7 @@ register({
       if (b) ctx.app.run(`${s.sym} ${b.dataset.fn}`);
     });
     ctx.el.appendChild(related);
-    return { update: () => { strip(); draw(); drawIntr(); }, every: 2, destroy: () => { gone = true; chart.destroy(); } };
+    return { update: () => { strip(); draw(); drawIntr(); drawNote(); }, every: 2, destroy: () => { gone = true; chart.destroy(); } };
   },
 });
 

@@ -23,6 +23,7 @@ import './functions/ovme.js';
 import './functions/mars.js';
 import './functions/bql.js';
 import './functions/analysts.js';
+import './functions/notes.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [
@@ -543,7 +544,7 @@ class App {
     this.sel = -1;
     input.addEventListener('input', () => {
       // Upper-case everything except an API key typed after FINNHUB or FRED, or an address after SECID (keys are case-sensitive).
-      const m = /^(\s*(?:finnhub|fred|secid)\s+)(.*)$/i.exec(input.value);
+      const m = /^(\s*(?:finnhub|fred|secid)\s+)(.*)$/i.exec(input.value) || /^(\s*(?:\S+\s+)?note\s+)(.*)$/i.exec(input.value);
       input.value = m ? m[1].toUpperCase() + m[2] : input.value.toUpperCase();
       this.sel = -1;
       this.renderSuggest();

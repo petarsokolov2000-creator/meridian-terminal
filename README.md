@@ -215,7 +215,7 @@ New in this release, in plain words:
   The built-in list is a hand-checked snapshot of notable relationships, not a data feed with hundreds of links per company.
 
 Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `CHART AAPL VS MSFT`, `SCRN pe<20 yld>2 sort=-chg`,
-`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT TABS` (one big panel with tabs; phones start this way; `+` or `TAB` opens more tabs, up to 12, which start empty, `×` or `TAB CLOSE` closes one; the four-panel view shows the first four) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.
+`BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME` (looks: DESK is the default, plus DARK and LIGHT; `THEME DESK|DARK|LIGHT`), `LAYOUT 6|4|2|1|TABS`, `LAYOUT TABS` (one big panel with tabs; phones start this way; `+` or `TAB` opens more tabs, up to 12, which start empty, `×` or `TAB CLOSE` closes one; the four-panel view shows the first four) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.
 `SECID you@example.com` sets the contact address the SEC asks every client to send (stays on this PC, goes only to the SEC);
 try it if `STATUS` shows the SEC answering HTTP 403. `STATUS` tests every data source right now and shows each real answer, plus your version, API keys and
 notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side (valuation, growth, margins,

@@ -5,6 +5,7 @@ import { Engine } from './engine.js';
 import { LiveEngine, liveAvailable } from './live.js';
 import { FUNCTIONS, resolve } from './registry.js';
 import { esc, px, chgText, dir, store, save, el } from './fmt.js';
+import { startDeskTint } from './desk-tint.js';
 import './functions/market.js';
 import './functions/security.js';
 import { trade, checkAlerts, collectBackgroundAlerts } from './functions/tools.js';
@@ -35,6 +36,7 @@ const PANEL_DEFAULTS = [
 ];
 const LINKS = ['A', 'B', 'C', null];
 const MAX_TABS = 12;
+const THEMES = ['desk', 'dark', 'light'];
 
 let engine; // chosen at boot: LiveEngine (real data via serve.mjs) or the simulation
 
@@ -156,11 +158,11 @@ class Panel {
 class App {
   constructor() {
     this.engine = engine;
-    // 4 / 2 / 1 panels on one screen, or 'tabs' = one big panel with a tab for each of the four.
+    // 6 / 4 / 2 / 1 panels on one screen, or 'tabs' = one big panel with a tab for each of the four.
     // Phones start with tabs (four stacked panels meant a very long scroll).
     const phone = window.matchMedia?.('(max-width: 900px)').matches;
     const saved0 = store('layout', null);
-    this.layout = [1, 2, 4, 'tabs'].includes(saved0) ? saved0 : phone ? 'tabs' : 4;
+    this.layout = [1, 2, 4, 6, 'tabs'].includes(saved0) ? saved0 : phone ? 'tabs' : 4;
     this.grid = document.getElementById('grid');
     const saved = store(`panels:${engine.mode}`, []);
     // four panels to start with; more can be opened as tabs (up to MAX_TABS), and closed again
@@ -194,14 +196,16 @@ class App {
       const b = e.target.closest('[data-tab]');
       if (b) { this.focus(Number(b.dataset.tab)); this.cmd.focus({ preventScroll: true }); }
     });
-    document.getElementById('viewbtn').addEventListener('click', () => this.setLayout(this.layout === 'tabs' ? 4 : 'tabs'));
+    document.getElementById('viewbtn').addEventListener('click', () => this.setLayout(this.layout === 'tabs' ? this.lastGrid() : 'tabs'));
     this.focus(Math.min(this.panels.length - 1, Math.max(0, Number(store('tabFocus', 0)) || 0)));
     this.applyLayout();
     this.bindCommandLine();
     this.bindKeys();
     this.buildTape();
-    this.theme = store('theme', 'dark');
+    const th = store('theme', 'desk');
+    this.theme = THEMES.includes(th) ? th : 'desk';
     document.documentElement.dataset.theme = this.theme;
+    this.tint = startDeskTint(this.grid);
     this.status();
     engine.on('tick', () => this.onTick());
     engine.on('news', (stories) => this.onNews(stories));
@@ -243,22 +247,31 @@ class App {
     this.applyLayout();
   }
 
+  // the grid size the Tabs button switches back to (4 unless the user chose 1, 2 or 6)
+  lastGrid() {
+    const g = store('gridLayout', 4);
+    return [1, 2, 4, 6].includes(g) ? g : 4;
+  }
+
   setLayout(l) {
+    // a bigger grid than we have panels: open empty ones so no cell is missing
+    while (typeof l === 'number' && this.panels.length < l && this.panels.length < MAX_TABS) this.addPanel('', true);
     this.layout = l;
     this.maxed = null;
     save('layout', l);
+    if (l !== 'tabs') save('gridLayout', l);
     this.applyLayout();
     this.focus(Math.min(this.focused, this.layout === 'tabs' ? this.panels.length - 1 : Math.min(this.layout, this.panels.length) - 1));
     this.toast(l === 'tabs' ? 'Tabs: one big panel at a time. Tap a tab (or Ctrl+1-9) to switch, + opens a new one, × closes one. Switch back with the button at the top.' : `${l} panel${l === 1 ? '' : 's'} on screen.${this.panels.length > l ? ` Your other ${this.panels.length - l} tab${this.panels.length - l === 1 ? ' is' : 's are'} still open: switch back to Tabs to see ${this.panels.length - l === 1 ? 'it' : 'them'}.` : ''}`);
   }
 
   // Open another tab (a new panel). Only the tab view can show more than four, so switch to it.
-  addPanel(cmd = '') {
+  addPanel(cmd = '', keepLayout = false) {
     if (this.panels.length >= MAX_TABS) return this.toast(`That's the most tabs (${MAX_TABS}). Close one with × first.`, 'err');
     const p = new Panel(this, this.panels.length, null);
     this.panels.push(p);
     this.grid.appendChild(p.root);
-    if (this.layout !== 'tabs') {
+    if (this.layout !== 'tabs' && !keepLayout) {
       this.layout = 'tabs';
       save('layout', 'tabs');
     }
@@ -293,7 +306,7 @@ class App {
     if (!this.tabs || !this.panels) return;
     const tabs = this.layout === 'tabs';
     const btn = document.getElementById('viewbtn');
-    btn.textContent = tabs ? '▦ 4 panels' : `▤ Tabs${this.panels.length > 4 ? ` (${this.panels.length})` : ''}`;
+    btn.textContent = tabs ? `▦ ${this.lastGrid()} panels` : `▤ Tabs${this.panels.length > 4 ? ` (${this.panels.length})` : ''}`;
     btn.setAttribute('aria-pressed', String(tabs));
     this.tabs.hidden = !tabs;
     if (!tabs) return;
@@ -359,11 +372,14 @@ class App {
       return this.toast(`Clock speed ${v}×`);
     }
     if (up[0] === 'THEME') {
-      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+      const want = (up[1] || '').toLowerCase();
+      if (up[1] && !THEMES.includes(want)) return this.toast(`THEME ${THEMES.join(' / ').toUpperCase()}, or just THEME to switch to the next look.`, 'err');
+      this.theme = want || THEMES[(THEMES.indexOf(this.theme) + 1) % THEMES.length];
       document.documentElement.dataset.theme = this.theme;
       save('theme', this.theme);
+      this.tint();
       this.panels.forEach((p) => p.mounted?.update?.());
-      return;
+      return this.toast(`Look: ${this.theme.toUpperCase()}. Switch with THEME DESK / DARK / LIGHT.`);
     }
     if (up[0] === 'TAB' || up[0] === 'NEWTAB' || up[0] === 'TABS') {
       if (/^(CLOSE|X|DEL|RM)$/.test(up[1] || '')) return this.closePanel(this.focused);
@@ -372,7 +388,7 @@ class App {
     }
     if (up[0] === 'LAYOUT') {
       const a = up[1];
-      return this.setLayout(/^TABS?$/.test(a || '') ? 'tabs' : [1, 2, 4].includes(Number(a)) ? Number(a) : a ? 4 : this.layout === 'tabs' ? 4 : 'tabs');
+      return this.setLayout(/^TABS?$/.test(a || '') ? 'tabs' : [1, 2, 4, 6].includes(Number(a)) ? Number(a) : a ? 4 : this.layout === 'tabs' ? 4 : 'tabs');
     }
     if (up[0] === 'BACK') return panel.back();
     if (up[0] === 'RESET') {
@@ -644,8 +660,8 @@ class App {
         const i = Number(e.key) - 1;
         if (this.maxed != null) this.maxed = null;
         if (this.layout !== 'tabs' && i >= this.layout) {
-          // panels 5+ only exist in the tab view; 1-4 just need the four-panel grid
-          this.layout = i >= 4 ? 'tabs' : 4;
+          // panels 7+ only exist in the tab view; 5-6 need the six-panel grid, 1-4 the four-panel grid
+          this.layout = i >= 6 ? 'tabs' : i >= 4 ? 6 : 4;
         }
         this.applyLayout();
         this.focus(i);

@@ -133,6 +133,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .grid[data-layout='4'] { grid-template: minmax(0, 1fr) minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr); }
 .grid[data-layout='2'] { grid-template: minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr); }
 .grid[data-layout='1'] { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+.grid[data-layout='6'] { grid-template: minmax(0, 1fr) minmax(0, 1fr) / repeat(3, minmax(0, 1fr)); }
 .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); border: 1px solid var(--line); }
 .panel[hidden] { display: none; }
 .panel.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -305,7 +306,7 @@ a.sec:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
   body { overflow: auto; }
-  .grid[data-layout='4'], .grid[data-layout='2'] { grid-template: none; grid-auto-rows: minmax(380px, 70vh); grid-template-columns: minmax(0, 1fr); }
+  .grid[data-layout='6'], .grid[data-layout='4'], .grid[data-layout='2'] { grid-template: none; grid-auto-rows: minmax(380px, 70vh); grid-template-columns: minmax(0, 1fr); }
   body { overflow-x: hidden; grid-template-columns: minmax(0, 1fr); }
   .status .clock { font-size: 11px; }
   .split2, .desc-grid, .opt-split { grid-template-columns: minmax(0, 1fr); }
@@ -510,3 +511,45 @@ a.doc:hover { text-decoration: underline; }
 .ins-all { margin-left: 12px; font-weight: normal; cursor: pointer; }
 .si-bar { display: inline-block; height: 8px; border-radius: 1px; min-width: 2px; max-width: 100%; }
 .si-facts td.l { white-space: normal; } .si-facts .small { margin: 1px 0 3px; }
+
+/* DESK theme: black, cyan and magenta, filled change cells, big prices. Third look next to dark and light. */
+:root[data-theme='desk'] {
+  --mono: Arial, 'Helvetica Neue', 'Liberation Sans', sans-serif;
+  --bg: #000; --panel: #0b0b0b; --panel-head: #161616; --line: #2a2a2a;
+  --text: #fff; --dim: #8c8c8c; --accent: #00e5ff; --accent-ink: #00141a; --warn: #ffd600;
+  --up: #00e676; --down: #ff1744; --flat: #bdbdbd;
+  --link-a: #00e5ff; --link-b: #ffd600; --link-c: #ff2bd6;
+  --heat-up: #00b85a; --heat-down: #e0102f; --heat-mid: #161616;
+  --chart-bg: #050505; --chart-grid: #1a1a1a; --chart-text: #8c8c8c; --chart-cross: #00e5ff;
+  --s1: #00e5ff; --s2: #ffd600; --s3: #ff2bd6; --s4: #00e676; --s5: #ff1744; --s6: #fff;
+  --tint-up: 0, 200, 100; --tint-down: 240, 20, 50;
+  color-scheme: dark;
+}
+:root[data-theme='desk'] body { font-size: 11.5px; line-height: 1.25; }
+:root[data-theme='desk'] * { border-radius: 0 !important; }
+:root[data-theme='desk'] .topbar { background: #000; border-bottom: 3px solid var(--accent); }
+:root[data-theme='desk'] .brand { color: var(--accent); font-weight: 900; letter-spacing: .25em; }
+:root[data-theme='desk'] .cmdwrap { background: #111; border: 2px solid var(--accent); }
+:root[data-theme='desk'] .cmd { color: #fff; font-weight: 700; }
+:root[data-theme='desk'] .target { background: var(--accent); color: var(--accent-ink); }
+:root[data-theme='desk'] .tape { background: var(--bg); border-bottom: 1px solid var(--line); }
+:root[data-theme='desk'] .ti b { color: var(--accent); }
+:root[data-theme='desk'] .grid { gap: 3px; padding: 3px; background: #000; }
+:root[data-theme='desk'] .panel { border: 0; border-left: 3px solid var(--accent); background: var(--panel); }
+:root[data-theme='desk'] .panel.focused { box-shadow: 0 0 0 1px var(--accent) inset; }
+:root[data-theme='desk'] .ph { padding: 2px 6px; }
+:root[data-theme='desk'] .pfn { background: #ff2bd6; color: #fff; padding: 0 6px; }
+:root[data-theme='desk'] .psec { color: #fff; font-weight: 800; }
+:root[data-theme='desk'] .panel.focused .pnum { background: var(--accent); color: var(--accent-ink); }
+:root[data-theme='desk'] .tbl th { color: var(--accent); font-size: 10px; text-transform: uppercase; font-weight: 700; border-bottom: 2px solid var(--line); background: var(--panel); }
+:root[data-theme='desk'] .tbl td { padding: 1px 4px; font-weight: 600; }
+:root[data-theme='desk'] .tbl tbody tr:hover td { background: color-mix(in oklab, var(--accent) 14%, transparent); }
+:root[data-theme='desk'] a.sec, :root[data-theme='desk'] .q-sym { color: var(--accent); }
+:root[data-theme='desk'] .pane h3 { margin: 4px 0; color: #000; background: var(--accent); padding: 1px 6px; font-weight: 800; letter-spacing: .1em; }
+:root[data-theme='desk'] .tb.on, :root[data-theme='desk'] .tab.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+:root[data-theme='desk'] .tab.on .tabn { background: var(--accent-ink); color: var(--accent); }
+:root[data-theme='desk'] .footbar { background: var(--panel-head); }
+:root[data-theme='desk'] .q-last { font-size: 17px; }
+/* change cells are filled; src/desk-tint.js sets --tint (stronger move = stronger fill) */
+:root[data-theme='desk'] .tbl td[data-tint].up { background: rgba(var(--tint-up), var(--tint)); color: #fff; }
+:root[data-theme='desk'] .tbl td[data-tint].down { background: rgba(var(--tint-down), var(--tint)); color: #fff; }

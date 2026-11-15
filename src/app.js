@@ -28,6 +28,7 @@ import './functions/notes.js';
 import './functions/insider.js';
 import './functions/alloc.js';
 import './functions/gaps.js';
+import './functions/ships.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [
@@ -357,6 +358,7 @@ class App {
     if (up[0] === 'UPDATE' || up[0] === 'VERSION') return this.checkUpdate(true);
     if (up[0] === 'FINNHUB') return this.keyCommand('finnhub', toks[1]);
     if (up[0] === 'FRED') return this.keyCommand('fred', toks[1]);
+    if (up[0] === 'AISKEY') return this.keyCommand('ais', toks[1]);
     if (up[0] === 'SECID') return this.secContact(toks[1]);
     if (up[0] === 'MODE') {
       const want = up[1] === 'SIM' ? 'sim' : up[1] === 'LIVE' ? 'live' : null;
@@ -478,7 +480,7 @@ class App {
   }
 
   async keyCommand(id, arg) {
-    const label = id === 'fred' ? 'FRED' : 'Finnhub';
+    const label = id === 'fred' ? 'FRED' : id === 'ais' ? 'AISStream' : 'Finnhub';
     if (!arg) {
       if (engine.mode !== 'live') return this.toast(`${label} works with real data only: switch with MODE LIVE first.`);
       if (id === 'fred') {
@@ -486,6 +488,7 @@ class App {
         if (!f.configured) return this.toast('No FRED key yet. Get a free one at fredaccount.stlouisfed.org/apikeys, then type FRED followed by the key.');
         return this.toast(`FRED: ${f.economy ? `${f.economy.length} indicators loaded (see ECO)` : f.error || 'loading'}.`);
       }
+      if (id === 'ais') return this.toast(`${label} key: type AISKEY followed by your key (free at aisstream.io) for ships worldwide in SHIPS; AISKEY OFF removes it. Without one SHIPS shows the Baltic Sea only. STATUS shows whether it is set and works.`);
       const fh = engine.fh;
       if (!fh.configured) return this.toast('No Finnhub key yet. Type FINNHUB followed by your key (free at finnhub.io).');
       return this.toast(`Finnhub: stream ${fh.stream}, ${fh.streaming} symbols${fh.error ? ` — ${fh.error}` : ''}. Earnings ${fh.earnings ? 'loaded' : fh.earningsError || 'pending'}. Economic calendar: ${fh.eco ? 'loaded' : fh.ecoError || 'pending'}.`);
@@ -562,8 +565,8 @@ class App {
     let hp = -1;
     this.sel = -1;
     input.addEventListener('input', () => {
-      // Upper-case everything except an API key typed after FINNHUB or FRED, or an address after SECID (keys are case-sensitive).
-      const m = /^(\s*(?:finnhub|fred|secid)\s+)(.*)$/i.exec(input.value) || /^(\s*(?:\S+\s+)?note\s+)(.*)$/i.exec(input.value);
+      // Upper-case everything except an API key typed after FINNHUB, FRED or AISKEY, or an address after SECID (keys are case-sensitive).
+      const m = /^(\s*(?:finnhub|fred|secid|aiskey)\s+)(.*)$/i.exec(input.value) || /^(\s*(?:\S+\s+)?note\s+)(.*)$/i.exec(input.value);
       input.value = m ? m[1].toUpperCase() + m[2] : input.value.toUpperCase();
       this.sel = -1;
       this.renderSuggest();
@@ -589,7 +592,7 @@ class App {
         if (li) this.complete(li.dataset.v);
         const v = input.value.trim();
         if (!v) return;
-        if (!/^(FINNHUB|FRED)\s+\S/i.test(v)) {
+        if (!/^(FINNHUB|FRED|AISKEY)\s+\S/i.test(v)) {
           // never keep an API key in the command history
           cmdHist.unshift(v);
           save('cmdHist', [...new Set(cmdHist)].slice(0, 50));

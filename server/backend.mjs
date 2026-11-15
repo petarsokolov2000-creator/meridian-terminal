@@ -19,10 +19,12 @@ import { createFundamentals } from './fundamentals.mjs';
 import { fillStats } from './gapfill.mjs';
 import { earningsFrom, insidersFrom, trendFrom, profileFrom } from './finnhub-data.mjs';
 import { createTenK } from './tenk.mjs';
+import { createShips } from './ships.mjs';
 
 export const KEYS = {
   finnhub: { label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
   fred: { label: 'FRED', pattern: /^[a-z0-9]{32}$/ },
+  ais: { label: 'AISStream', command: 'AISKEY', pattern: /^[A-Za-z0-9_-]{16,80}$/ },
 };
 const REPO = 'petarsokolov2000-creator/meridian-terminal';
 
@@ -58,7 +60,8 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     const sector = SECTOR_OF.get(sym);
     return [...SECTOR_OF].filter(([s, sec2]) => s !== sym && (!sector || sec2 === sector)).map(([s]) => s);
   };
-  const providers = { finnhub: { check: () => finnhub.check(), restart: () => finnhub.restart() }, fred: { check: () => fred.check(), restart: () => fred.reset() } };
+  const ships = createShips({ getKey: () => keyStore.get('ais'), fetchImpl, WebSocketImpl });
+  const providers = { ais: { check: () => ships.check(), restart: () => ships.restart() }, finnhub: { check: () => finnhub.check(), restart: () => finnhub.restart() }, fred: { check: () => fred.check(), restart: () => fred.reset() } };
   const UNIVERSE = new Set(universe);
 
   // ---- daily history: cached per day, since it only changes once a day --------------------
@@ -123,6 +126,8 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     { id: 'finnhub', key: 'finnhub', name: 'Finnhub · real-time price', used: 'Real-time trades, news summaries, earnings estimates', run: () => finnhub.probe.quote() },
     { id: 'finnhub-company', key: 'finnhub', name: 'Finnhub · company metrics', used: 'Fills gaps in KEYS, EPS history, insider trades and ANLY rating counts when Yahoo has none', run: () => finnhub.probe.company() },
     { id: 'finnhub-financials', key: 'finnhub', name: 'Finnhub · financial statements', used: 'Third source for older years in VAL and QUAL', run: () => finnhub.probe.reported() },
+    { id: 'ais', key: 'ais', name: 'AISStream · ships worldwide', used: 'SHIPS: live positions of ships everywhere AIS stations can hear them', run: async () => (await ships.check()) && 'the key works' },
+    { id: 'digitraffic', name: 'Digitraffic · ships in Finland and the Baltic', used: 'SHIPS without an AISStream key (Baltic Sea only)', run: () => ships.probe.digitraffic() },
     { id: 'fred', key: 'fred', name: 'FRED · US economic data', used: 'ECO', run: async () => (await fred.check()) && 'the key works' },
     { id: 'treasury', name: 'US Treasury · yield curve', used: 'CURVE, GOVT and US yields', run: async () => `curve of ${(await rates.treasury()).rows.at(-1).date}` },
     { id: 'ecb', name: 'ECB · euro yield curve', used: 'CURVE (euro area)', run: async () => (await rates.ecb()) && 'answered' },
@@ -141,7 +146,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
 
   async function runCheck(c) {
     const base = { id: c.id, name: c.name, used: c.used };
-    if (c.key && !keyStore.get(c.key)) return { ...base, state: 'off', detail: `no ${KEYS[c.key].label} key set (optional). Add one with ${c.key.toUpperCase()} <key>.` };
+    if (c.key && !keyStore.get(c.key)) return { ...base, state: 'off', detail: `no ${KEYS[c.key].label} key set (optional). Add one with ${KEYS[c.key].command || c.key.toUpperCase()} <key>.` };
     const t0 = Date.now();
     try {
       const limit = new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("didn't answer within 30 s (timeout)"), { http: 'timeout' })), 30e3));
@@ -377,6 +382,17 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     '/api/segments': async (q) => tenk.segments(needSym(q)),
     '/api/risks': async (q) => tenk.risks(needSym(q)),
     '/api/etf': async (q) => yahoo.etf(needSym(q)),
+    '/api/ships': async (q) => {
+      const num = (k, d) => (Number.isFinite(Number(q.get(k))) && q.get(k) !== null && q.get(k) !== '' ? Number(q.get(k)) : d);
+      const bbox = [Math.max(-180, num('w', -180)), Math.max(-90, num('s', -90)), Math.min(180, num('e', 180)), Math.min(90, num('n', 90))];
+      return ships.query({ bbox, q: (q.get('q') || '').slice(0, 60), list: q.get('list') === '1', limit: num('limit', 50) });
+    },
+    '/api/ships/one': async (q) => {
+      const r = ships.one(q.get('mmsi'));
+      if (!r) throw new RouteError('That ship is not in the live data (it may have gone out of range).', 404);
+      return r;
+    },
+    '/api/ships/status': async () => ships.status(),
     '/api/options': async (q) => yahoo.options(needSym(q), Number(q.get('date')) || null),
   };
 
@@ -423,7 +439,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
         await keyStore.set('sec', v || null);
         return { ok: true, removed: !v };
       }
-      const keyRoute = /^\/api\/(finnhub|fred)\/key$/.exec(pathname);
+      const keyRoute = /^\/api\/(finnhub|fred|ais)\/key$/.exec(pathname);
       if (keyRoute) return setKey(keyRoute[1], body?.key);
       throw new RouteError('Not found', 404);
     },

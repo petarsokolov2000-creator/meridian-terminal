@@ -71,7 +71,7 @@ export function mark(y, fields, prev = null, prevFields = [], prevLabel = 'for t
   const srcs = [...cur.map((f) => y.src?.[f]?.s), ...pre.map((f) => prev.src?.[f]?.s)];
   const lab = letters([...new Set(srcs)].filter(Boolean).sort((a, b) => 'SEC Yahoo Finnhub'.indexOf(a) - 'SEC Yahoo Finnhub'.indexOf(b)).join('+'));
   if (!lab) return '';
-  const lines = [`FY${y.fy}:`, ...cur.map((f) => describe(y, f)), ...(pre.length ? [`FY${prev.fy} (${prevLabel}):`, ...pre.map((f) => describe(prev, f))] : [])];
+  const lines = [`${/^\d/.test(String(y.fy)) ? 'FY' : ''}${y.fy}:`, ...cur.map((f) => describe(y, f)), ...(pre.length ? [`FY${prev.fy} (${prevLabel}):`, ...pre.map((f) => describe(prev, f))] : [])];
   if (lab.includes('+')) lines.unshift('This figure combines numbers from more than one source.');
   return button(lab.includes('+') ? 'mix' : '', lab, lines.join('\n'));
 }

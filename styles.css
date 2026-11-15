@@ -578,3 +578,18 @@ a.doc:hover { text-decoration: underline; }
 .gaps-pane .gaps-pct, .gaps-pane .gaps-pct.up, .gaps-pane .gaps-pct.dn { color: inherit; }
 .gaps-pane .tbl td { white-space: normal; max-width: none; overflow: visible; text-overflow: clip; vertical-align: top; }
 .gaps-pane .tbl td.l:first-child { white-space: nowrap; }
+
+/* SHIPS: world map of ships */
+.ships-bar .ships-q { flex: 1 1 160px; min-width: 120px; max-width: 280px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 2px 6px; font: inherit; font-size: 11px; }
+.ships-bar .sep { flex: 1 1 8px; }
+.ships-map { position: relative; line-height: 0; overflow: hidden; touch-action: none; }
+.ships-canvas { display: block; cursor: grab; touch-action: none; }
+.ships-tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 2px 6px; font-size: 11px; line-height: 1.3; white-space: nowrap; z-index: 2; }
+.ships-status { line-height: 1.5; }
+.ships-leg { display: inline-flex; align-items: center; padding: 1px 6px; border: 1px solid var(--line); border-radius: 2px; background: none; color: var(--dim); font-size: 11px; opacity: 0.5; cursor: pointer; }
+.ships-leg.on { opacity: 1; color: var(--text); border-color: var(--dim); }
+.ships-card { margin: 6px; padding: 8px 10px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; }
+.ships-grid { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 6px 0; }
+.ships-tbl tbody tr { cursor: pointer; }
+.ships-tbl tbody tr:hover td { background: color-mix(in oklab, var(--accent) 10%, transparent); }
+@media (max-width: 640px) { .ships-card { margin: 4px 0; } }

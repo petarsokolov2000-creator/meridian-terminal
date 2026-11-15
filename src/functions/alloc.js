@@ -114,6 +114,26 @@ function stacked(rows) {
   return `<svg class="pie-hist" viewBox="0 0 ${W} ${H + 20}" role="img" aria-label="How the mix changed over the years">${bars.join('')}</svg>`;
 }
 
+/**
+ * The last 12 months as a pseudo fiscal year: operating cash flow and net income from the trailing figures,
+ * the uses the same way (SEC: 10-K + year-to-date 10-Q − the same period a year earlier; else Yahoo's trailing 12 months). A figure with no
+ * 12-month source stays missing with its reason; a fiscal-year fallback is never passed off as 12 months.
+ */
+export function ttmYear(a) {
+  const N = a?.now?.fields;
+  if (!N) return null;
+  const y = { fy: 'TTM', end: a.now.ttmEnd || null, src: {}, na: {} };
+  const take = (k, x) => {
+    if (x && fin(x.val) && x.basis !== 'FY') {
+      y[k] = x.val;
+      y.src[k] = { s: x.src || 'SEC', tag: x.tag, filed: x.filed, period: x.end, item: x.formula };
+    } else y.na[k] = x && fin(x.val) ? 'only a fiscal-year figure exists, no 12-month one' : x?.why || 'not reported';
+  };
+  for (const k of ['ocf', 'netIncome']) take(k, N[k]);
+  for (const u of USES) take(u[0], N[u[0]]);
+  return y;
+}
+
 // ---- view -----------------------------------------------------------------------------------
 
 const labelOf = (key) => (USES.find((u) => u[0] === key) || [])[1] || key;
@@ -161,13 +181,17 @@ function render(ctx, a) {
   }
   const per = years.map((y) => ({ y, al: allocOf(y, financial) }));
   const tabsKeys = per.slice(-5).map((p) => String(p.y.fy));
+  const ty = ttmYear(a);
+  const ttmP = ty ? { y: ty, al: allocOf(ty, financial) } : null;
+  const ttmLabel = ty?.end ? `the 12 months to ${ty.end}` : 'the last 12 months';
   const canSum = per.length >= 2;
   let sel = String(per[per.length - 1].y.fy);
   const bar = el('div', 'toolbar');
   const body = el('div');
   ctx.el.append(bar, body);
   const drawBar = () => {
-    bar.innerHTML = tabsKeys.map((k) => `<button class="tb ${k === sel ? 'on' : ''}" data-k="${k}">FY${k}</button>`).join('')
+    bar.innerHTML = (ttmP ? `<button class="tb ${sel === 'ttm' ? 'on' : ''}" data-k="ttm" title="The last 12 months from the latest quarterly report (10-K + year-to-date 10-Q − the same period a year earlier)">12 MONTHS</button><span class="sep"></span>` : '')
+      + tabsKeys.map((k) => `<button class="tb ${k === sel ? 'on' : ''}" data-k="${k}">FY${k}</button>`).join('')
       + (canSum ? `<span class="sep"></span><button class="tb ${sel === 'sum' ? 'on' : ''}" data-k="sum" title="The last ${Math.min(5, per.length)} fiscal years added together">${Math.min(5, per.length)} YEARS</button>` : '');
   };
   bar.addEventListener('click', (e) => {
@@ -179,7 +203,8 @@ function render(ctx, a) {
 
   const draw = () => {
     drawBar();
-    const one = sel === 'sum' ? null : per.find((p) => String(p.y.fy) === sel);
+    const one = sel === 'sum' ? null : sel === 'ttm' ? ttmP : per.find((p) => String(p.y.fy) === sel);
+    const periodName = sel === 'sum' ? 'these years' : sel === 'ttm' ? ttmLabel : `FY${sel}`;
     const al = one ? one.al : allocSum(per.slice(-5).map((p) => p.al));
     const slices = slicesOf(al, financial);
     const total = al.total;
@@ -187,10 +212,10 @@ function render(ctx, a) {
     // nothing spent that any source reported: a chart that is all "kept" would only look like an answer
     if (!(al.uses > 0)) {
       const why = [...new Set(al.missing.map((m) => m.why))].join('; ');
-      body.innerHTML = `<div class="empty">No source reported ${financial ? 'dividends, buybacks or acquisitions' : 'any use of cash (research, capital spending, acquisitions, buybacks, dividends, debt repaid)'} for ${sel === 'sum' ? 'these years' : `FY${esc(sel)}`}${why ? ` (${esc(why)})` : ''}, so there is nothing to chart.<br><span class="dim small">${statusLine(a.status)}</span></div>`;
+      body.innerHTML = `<div class="empty">No source reported ${financial ? 'dividends, buybacks or acquisitions' : 'any use of cash (research, capital spending, acquisitions, buybacks, dividends, debt repaid)'} for ${esc(periodName)}${why ? ` (${esc(why)})` : ''}, so there is nothing to chart.<br><span class="dim small">${statusLine(a.status)}</span></div>`;
       return;
     }
-    const centre = [big(total), sel === 'sum' ? `${al.years} years` : `FY${al.fy}`];
+    const centre = [big(total), sel === 'sum' ? `${al.years} years` : sel === 'ttm' ? '12 months' : `FY${al.fy}`];
     const pct = (v) => `${num((v / total) * 100, 1)}%`;
     const rows = slices.map((sl) => {
       const m = one && sl.key !== 'kept' ? mark(one.y, [sl.key]) : '';
@@ -207,9 +232,9 @@ function render(ctx, a) {
     const legendAll = (financial ? USES.filter((u) => BANK_USES.includes(u[0])) : USES).concat([KEPT]);
     body.innerHTML = `<div class="port-head">${cards.map(([k, v, tip]) => `<div title="${esc(tip)}"><span class="dim">${k}</span><b>${v}</b></div>`).join('')}</div>
       <div class="alloc-main"><div class="alloc-pie">${donut(slices, total, centre)}</div>
-        <div class="tbl-wrap alloc-tbl"><table class="tbl"><thead><tr><th class="l">${esc(ctx.sec.sym)} · ${sel === 'sum' ? `FY${esc(al.fy)}` : `FY${esc(sel)}`}</th><th class="r">Amount</th><th class="r">Share</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+        <div class="tbl-wrap alloc-tbl"><table class="tbl"><thead><tr><th class="l">${esc(ctx.sec.sym)} · ${sel === 'sum' ? `FY${esc(al.fy)}` : sel === 'ttm' ? '12 MONTHS' : `FY${esc(sel)}`}</th><th class="r">Amount</th><th class="r">Share</th></tr></thead><tbody>${rows}</tbody></table></div></div>
       ${hist.length > 1 ? `<h3 class="alloc-h">How the mix changed (share of each year's total)</h3><div class="alloc-hist">${stacked(hist)}</div><div class="alloc-key">${legendAll.map((u) => `<span><i class="sw" style="background:var(${u[2]})"></i>${esc(u[1])}</span>`).join('')}</div>` : ''}
-      <p class="note">${al.gap > 0 ? `In this period the company spent ${big(al.gap)} more than the ${baseName} it generated (${big(al.base)}); the difference was paid from cash on hand or new borrowing, so the chart shows the uses only. ` : al.base == null ? `No ${baseName} figure was reported, so the chart shows the uses only, without a "kept" slice. ` : ''}${missing.length ? `Counted as 0 because no source reported them: ${missing.map((m) => `${esc(labelOf(m.key))} (${esc(m.why)})`).join('; ')}. ` : ''}${financial ? 'Banks and insurers: the base is net income, and capital spending, R&D and debt are left out because their cash flow statements don’t describe the business. ' : 'R&D is added back to operating cash flow so it can be compared with the other uses (it was deducted before that figure). '}Acquisitions are net of the cash acquired. Debt repaid is gross: companies refinance, so a large number does not mean the debt shrank.<br>${statusLine(a.status)}<br>Sources: ${esc(a.source)}, latest filing ${esc(a.asOf)}. Hover a slice for its amount; a letter next to an amount means it came from a fallback source (tap it for the details).</p>`;
+      <p class="note">${al.gap > 0 ? `In this period the company spent ${big(al.gap)} more than the ${baseName} it generated (${big(al.base)}); the difference was paid from cash on hand or new borrowing, so the chart shows the uses only. ` : al.base == null ? `No ${baseName} figure was reported, so the chart shows the uses only, without a "kept" slice. ` : ''}${missing.length ? `Counted as 0 because ${sel === 'ttm' ? 'no source has a 12-month figure for them' : 'no source reported them'}: ${missing.map((m) => `${esc(labelOf(m.key))} (${esc(m.why)})`).join('; ')}. ` : ''}${financial ? 'Banks and insurers: the base is net income, and capital spending, R&D and debt are left out because their cash flow statements don’t describe the business. ' : 'R&D is added back to operating cash flow so it can be compared with the other uses (it was deducted before that figure). '}Acquisitions are net of the cash acquired. Debt repaid is gross: companies refinance, so a large number does not mean the debt shrank.<br>${statusLine(a.status)}<br>Sources: ${esc(a.source)}, latest filing ${esc(a.asOf)}. Hover a slice for its amount; a letter next to an amount means it came from a fallback source (tap it for the details).</p>`;
     body.querySelectorAll('.pie-s').forEach((p) => {
       const i = p.dataset.i;
       const rowEl = body.querySelector(`tr[data-i="${i}"]`);

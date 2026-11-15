@@ -30,7 +30,7 @@ const mock = process.env.MERIDIAN_MOCK ? await import('./server/mock.mjs') : nul
 // ---- API keys: an env var, or a git-ignored file next to this script ------------------------
 // Keys never leave this PC: the browser only learns whether one is set.
 
-const KEY_FILES = { finnhub: { env: 'FINNHUB_API_KEY', file: '.finnhub-key' }, fred: { env: 'FRED_API_KEY', file: '.fred-key' }, sec: { env: 'MERIDIAN_SEC_CONTACT', file: '.sec-contact' } };
+const KEY_FILES = { finnhub: { env: 'FINNHUB_API_KEY', file: '.finnhub-key' }, fred: { env: 'FRED_API_KEY', file: '.fred-key' }, sec: { env: 'MERIDIAN_SEC_CONTACT', file: '.sec-contact' }, ais: { env: 'AISSTREAM_API_KEY', file: '.ais-key' } };
 const keys = {};
 for (const [id, k] of Object.entries(KEY_FILES)) {
   keys[id] = process.env[k.env] || null;
@@ -223,7 +223,7 @@ http.createServer(async (req, res) => {
   const file = path.normalize(path.join(ROOT, rel));
   // server/ is served too: it holds no secrets (keys live in the dot-files blocked here), and the
   // Android app loads the same modules from its own copy.
-  if (!file.startsWith(ROOT + path.sep) || /[\\/]\.cache[\\/]|\.(access-key|finnhub-key|fred-key|sec-contact)$/.test(file.slice(ROOT.length))) {
+  if (!file.startsWith(ROOT + path.sep) || /[\\/]\.cache[\\/]|\.(access-key|finnhub-key|fred-key|sec-contact|ais-key)$/.test(file.slice(ROOT.length))) {
     res.writeHead(404).end('Not found');
     return;
   }

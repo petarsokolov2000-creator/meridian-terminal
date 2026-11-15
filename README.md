@@ -120,6 +120,24 @@ FRED has the actual numbers and release dates but no economists' forecasts, so `
 "survey" or "surprise" column. If you have a Finnhub plan with its economic calendar, `ECO`
 uses that instead.
 
+## Ships (SHIPS)
+
+`SHIPS` shows ships from **AIS**, the radio signal ships broadcast so that others can see them. It is public data.
+
+- **Whole world:** get a free key at **https://aisstream.io** (create an account, then an API key) and type
+  **`AISKEY yourkey`** in the command line. The server checks it and saves it to the git-ignored `.ais-key` on this PC
+  (never sent to the browser or kept in the command history). `AISKEY OFF` removes it; `STATUS` shows whether it is set and works.
+  Alternatively set the `AISSTREAM_API_KEY` environment variable.
+- **Without a key:** only ships near Finland and the Baltic Sea, from the open Digitraffic service (Fintraffic).
+- **What it cannot be.** AIS is picked up by radio stations on land (and a few satellites), so coasts, ports and busy shipping
+  lanes are well covered, while the open ocean is mostly empty, and the number shown is "ships heard in the last 2 hours",
+  not "ships that exist". No free source shows every ship in the world. Names, types and destinations are typed in by the
+  crews and can be wrong or out of date; a ship that switches its transponder off is not shown.
+- The ship list builds up while Meridian is running (it is kept in memory only, not saved), so right after the start the map fills over a minute or two.
+- On the phone app Meridian's server runs inside the app. AISStream may not accept connections from there; if it does not,
+  `SHIPS` falls back to the Baltic feed and says so. Using the phone through the PC (phone access) should work, because the PC runs the server (not tested on a real phone).
+- Coastline: Natural Earth (public domain), in the form published by the `world-atlas` package (ISC licence).
+
 ## Official rates (no key needed)
 
 - **US Treasury** daily par yield curve: the official 2Y (Yahoo has no intraday 2Y index), and
@@ -176,7 +194,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 
 | Area | Codes |
 | --- | --- |
-| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` |
+| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` `SHIPS` |
 | Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
@@ -218,7 +236,8 @@ New in this release, in plain words:
   Analyst estimates, price targets, rating changes and holder lists exist only at Yahoo (Finnhub charges for them).
 - `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
   slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
-  debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year or sum the last 5.
+  debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year, the **12 months** just reported (latest annual report + the quarters since, from the SEC's 10-Q filings, or Yahoo's trailing figures; a use for which no source has a 12-month figure counts as 0 and is listed) or the 5-year sum.
+- `SHIPS` (also `VESSELS`, `AIS`, `MARITIME`, `SEA`): a world map of ships with each one's position and ID. Click or tap a ship (or a table row) for its card: name, MMSI (the radio ID every ship transmits), IMO (the hull's permanent number), type, speed, course, status, destination and when it was last heard. Search by name, MMSI or IMO; tap a type in the legend to hide it; scroll or pinch to zoom, drag to move. Needs `MODE LIVE`. See "Ships (SHIPS)" below for what it can and cannot show.
 - `SI`: short interest of one stock (`TSLA SI`): shares sold short, percent of the float, days to cover, change against the
   report a month earlier, a squeeze check (15%+ of the float and 4+ days to cover) and a history that builds up on your
   device. If you hold the stock short in `PORT`, it says so. `SI WATCH`, `SI PORT` or `SI MARKET` ranks a list.

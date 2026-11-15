@@ -317,6 +317,8 @@ function derive(y, financial) {
 
 // ---- trailing 12 months from the SEC's 10-Q data ------------------------------------------------
 
+// the uses of cash shown by ALLOC for the last 12 months
+const USE_NOW = ['rnd', 'acquisitions', 'buybacks', 'dividendsPaid', 'debtRepaid'];
 const FLOW_NOW = ['revenue', 'opIncome', 'pretax', 'interest', 'netIncome', 'da', 'ocf', 'capex', 'epsDil', 'dps', 'prefDividends'];
 const BAL_NOW = ['cash', 'stInvest', 'ltdTotal', 'ltdNoncurrent', 'ltdCurrent', 'shortDebt', 'equity', 'preferred', 'goodwill', 'intangibles', 'sharesOut'];
 
@@ -334,7 +336,7 @@ function secNow(raw, fyEnd, splits) {
     }
   }
   const flow = {};
-  for (const f of FLOW_NOW) {
+  for (const f of [...FLOW_NOW, ...USE_NOW]) {
     for (const { tag, rows } of rowsOf(f)) {
       const fy = fyRow(rows);
       if (!fy) continue;
@@ -599,7 +601,7 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
     const s = secData && latestSec && status.sec.state !== 'failed' ? secNow(secData.raw, latestSec, splits) : { flow: {}, bal: {} };
     const N = {};
     let partial = false;
-    const flows = financial ? ['revenue', 'netIncome', 'epsDil', 'dps', 'prefDividends'] : FLOW_NOW;
+    const flows = financial ? ['revenue', 'netIncome', 'epsDil', 'dps', 'prefDividends', 'dividendsPaid', 'buybacks', 'acquisitions'] : [...FLOW_NOW, ...USE_NOW];
     const bals = financial ? ['equity', 'preferred', 'goodwill', 'intangibles'] : ['cash', 'stInvest', 'equity', 'preferred', 'goodwill', 'intangibles'];
     for (const f of flows) {
       const x = s.flow[f];

@@ -22,7 +22,7 @@ const ROOT = path.join(process.env.LOCALAPPDATA || path.join(process.env.USERPRO
 const EXE = path.join(ROOT, 'Meridian.exe');
 const ICO = path.join(ROOT, 'Meridian.ico');
 // Files that belong to this PC, not to the program: never overwritten by an update.
-const LOCAL = new Set(['.cache', '.finnhub-key', '.fred-key', '.access-key', 'Meridian.exe', 'Meridian.exe.old', 'Meridian.ico']);
+const LOCAL = new Set(['.cache', '.finnhub-key', '.fred-key', '.sec-contact', '.ais-key', '.access-key', 'Meridian.exe', 'Meridian.exe.old', 'Meridian.ico']);
 
 // Meridian must be closed: its files (and Meridian.exe) are in use while it runs.
 async function running() {
@@ -217,7 +217,7 @@ if (earlier.length) {
   console.log(`     Updating ${earlier.length} earlier cop${earlier.length === 1 ? 'y' : 'ies'} of Meridian as well...`);
   for (const dir of earlier) {
     try {
-      for (const k of ['.finnhub-key', '.fred-key']) {
+      for (const k of ['.finnhub-key', '.fred-key', '.sec-contact', '.ais-key']) {
         if (fs.existsSync(path.join(dir, k)) && !fs.existsSync(path.join(ROOT, k))) fs.copyFileSync(path.join(dir, k), path.join(ROOT, k));
       }
       for (const name of fs.readdirSync(SOURCE)) {

@@ -598,6 +598,7 @@ function finnhubAapl() {
 // Fake Finnhub trade stream: a trade for a random subscribed symbol every ~300 ms.
 export class MockWebSocket {
   constructor(url) {
+    if (new URL(url).hostname === 'stream.aisstream.io') return new MockAis();
     this.readyState = 0;
     this.subs = new Set();
     this.ok = new URL(url).searchParams.get('token') === 'mockkey12345';
@@ -629,12 +630,109 @@ export class MockWebSocket {
   }
 }
 
+
+// ---- ships (AISStream and Digitraffic stand-ins) ------------------------------------------------------
+// A made-up fleet along the real sea lanes, so SHIPS can be tested offline. Not real vessels.
+export const MOCK_AIS_KEY = 'mockaiskey1234567';
+const LANES = [
+  [[-74, 40.5], [-60, 41], [-40, 46], [-20, 49], [-5, 49.6], [1.5, 51]], // New York - English Channel
+  [[1.5, 51], [4, 52], [8, 54]], [[-6, 36], [10, 37.5], [25, 34], [32.5, 31.3]], // Channel, Gibraltar - Suez
+  [[32.5, 29.9], [34, 27], [43, 13], [52, 12.5], [60, 20], [72, 18], [80, 8], [95, 5.5], [101, 2.5], [104, 1.2]], // Suez - Singapore
+  [[104, 1.2], [110, 10], [114, 22], [122, 31], [130, 33], [141, 35.5]], // Singapore - Japan
+  [[141, 35.5], [170, 42], [-170, 45], [-140, 40], [-125, 36], [-118, 33.7]], // Japan - Los Angeles
+  [[-118, 33.7], [-110, 22], [-90, 8], [-79.5, 8.9]], [[-79.5, 9.3], [-70, 15], [-80, 25], [-76, 36], [-74, 40.5]], // Panama
+  [[-46, -23.9], [-35, -8], [-25, 5], [-17, 14.7]], [[18.4, -34], [10, -20], [5, 2], [-5, 5]], // Brazil, West Africa
+  [[100, 13], [108, 10], [104, 1.2]], [[151, -33.8], [153, -27], [145, -14], [130, -10], [116, -20]], // Thailand, Australia
+  [[56, 26], [60, 24.5], [72, 18], [72.8, 19]], [[-90, 29], [-85, 26], [-80, 25]], // Gulf, Mexico Gulf
+  [[23, 60], [20, 58], [14, 55], [10, 56.5], [8, 54]], // Baltic
+];
+const WORDS = ['ATLANTIC', 'PACIFIC', 'NORDIC', 'ORIENT', 'GLOBAL', 'STAR', 'HARBOUR', 'OCEAN', 'GRAND', 'BLUE', 'IRON', 'SILVER', 'NORTHERN', 'EASTERN', 'MARINE', 'TRADER'];
+const NOUNS = ['SPIRIT', 'VOYAGER', 'PRIDE', 'GLORY', 'PIONEER', 'CARRIER', 'EXPRESS', 'HOPE', 'TIDE', 'WAVE', 'FORTUNE', 'LEGEND'];
+const DESTS = ['ROTTERDAM', 'SINGAPORE', 'SHANGHAI', 'LOS ANGELES', 'HAMBURG', 'DUBAI', 'NEW YORK', 'BUSAN', 'ANTWERP', 'SANTOS'];
+function mockFleet(n = 3200) {
+  const r = rng(424242);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const lane = LANES[Math.floor(r() * LANES.length)];
+    const k = Math.floor(r() * (lane.length - 1));
+    const f = r();
+    const a = lane[k];
+    const b = lane[k + 1];
+    const roll = r();
+    const type = roll < 0.4 ? 70 + Math.floor(r() * 10) : roll < 0.62 ? 80 + Math.floor(r() * 10) : roll < 0.67 ? 60 + Math.floor(r() * 10) : roll < 0.77 ? 30 : roll < 0.82 ? 52 : roll < 0.9 ? 36 : roll < 0.92 ? 35 : 90;
+    out.push({
+      mmsi: 200000000 + Math.floor(r() * 599999999), imo: 9000000 + Math.floor(r() * 999999), type,
+      name: `${WORDS[Math.floor(r() * WORDS.length)]} ${NOUNS[Math.floor(r() * NOUNS.length)]}`,
+      lat: a[1] + (b[1] - a[1]) * f + (r() - 0.5) * 2.4, lon: a[0] + (b[0] - a[0]) * f + (r() - 0.5) * 2.4,
+      sog: type === 30 || type === 52 ? 3 + r() * 5 : 8 + r() * 14, cog: Math.floor(r() * 360), dest: DESTS[Math.floor(r() * DESTS.length)],
+    });
+  }
+  return out;
+}
+
+class MockAis {
+  constructor() {
+    this.readyState = 0;
+    setTimeout(() => {
+      this.readyState = 1;
+      this.onopen?.();
+    }, 30);
+  }
+  send(msg) {
+    const sub = JSON.parse(msg);
+    if (sub.APIKey !== MOCK_AIS_KEY) {
+      setTimeout(() => {
+        this.emit({ error: 'Api Key Is Not Valid' });
+        this.close();
+      }, 30);
+      return;
+    }
+    const fleet = mockFleet();
+    let i = 0;
+    this.timer = setInterval(() => {
+      for (let k = 0; k < 250 && i < fleet.length; k++, i++) {
+        const v = fleet[i];
+        const meta = { MMSI: v.mmsi, ShipName: `${v.name}@@ `, latitude: v.lat, longitude: v.lon, time_utc: new Date().toISOString() };
+        this.emit({ MessageType: 'ShipStaticData', MetaData: meta, Message: { ShipStaticData: { ImoNumber: v.imo, Name: v.name, Type: v.type, Destination: `${v.dest}@@`, CallSign: 'MOCK' } } });
+        this.emit({ MessageType: 'PositionReport', MetaData: meta, Message: { PositionReport: { Sog: v.sog, Cog: v.cog, TrueHeading: v.cog, NavigationalStatus: 0, Latitude: v.lat, Longitude: v.lon } } });
+      }
+      if (i >= fleet.length) {
+        // afterwards: a few ships keep moving
+        for (let k = 0; k < 20; k++) {
+          const v = fleet[Math.floor(Math.random() * fleet.length)];
+          v.lon += 0.02;
+          this.emit({ MessageType: 'PositionReport', MetaData: { MMSI: v.mmsi, ShipName: v.name, latitude: v.lat, longitude: v.lon }, Message: { PositionReport: { Sog: v.sog, Cog: v.cog, TrueHeading: 511, NavigationalStatus: 0 } } });
+        }
+      }
+    }, 40);
+  }
+  // AISStream sends binary frames, which a browser hands over as a Blob
+  emit(o) {
+    if (this.readyState === 1) this.onmessage?.({ data: new Blob([JSON.stringify(o)]) });
+  }
+  close() {
+    clearInterval(this.timer);
+    this.readyState = 3;
+    this.onclose?.();
+  }
+}
+
+function digitraffic(u) {
+  if (process.env.MERIDIAN_MOCK_NO_DIGI) return new Response('Service Unavailable', { status: 503 });
+  const fleet = mockFleet(400).filter((v) => v.lon > 8 && v.lon < 31 && v.lat > 53 && v.lat < 66).slice(0, 150);
+  if (u.pathname.endsWith('/locations')) {
+    return ok({ type: 'FeatureCollection', dataUpdatedTime: new Date().toISOString(), features: fleet.map((v) => ({ type: 'Feature', mmsi: v.mmsi, geometry: { type: 'Point', coordinates: [v.lon, v.lat] }, properties: { mmsi: v.mmsi, sog: v.sog, cog: v.cog, navStat: 0, heading: 511, timestamp: 1700000000000, timestampExternal: Date.now() } })) });
+  }
+  return ok(fleet.map((v) => ({ mmsi: v.mmsi, name: v.name, imo: v.imo, shipType: v.type, destination: v.dest, callSign: 'MOCK' })));
+}
+
 const ok = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 'A3=mock; Path=/' } });
 
 export async function mockFetch(url) {
   const u = new URL(url);
   if (u.hostname === 'raw.githubusercontent.com') return new Response('2026.12.31.1\n', { status: 200 }); // STATUS's update check (test value)
   if (u.hostname === 'finnhub.io') return finnhub(u);
+  if (u.hostname === 'meri.digitraffic.fi') return digitraffic(u);
   if (u.hostname === 'home.treasury.gov') return new Response(treasuryCsv(), { status: 200 });
   if (u.hostname === 'data-api.ecb.europa.eu') return new Response(ecbCsv(), { status: 200 });
   if (u.hostname === 'api.frankfurter.dev') return ok({ amount: 1, base: 'USD', date: '2026-10-30', rates: { EUR: 0.925, JPY: 151.3, KRW: 1360.5, CNY: 7.21, GBP: 0.78 } });

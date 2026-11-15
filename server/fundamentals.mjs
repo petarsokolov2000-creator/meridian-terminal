@@ -912,5 +912,22 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
     }
   }
 
-  return { annual, valuation, peers, peerRow };
+  // FIN's annual statements built from the reported figures (SEC, then Finnhub), the same shape Yahoo's statements
+  // have, for when Yahoo refuses. Only line items the filings give are present; outflows are negative like Yahoo's.
+  async function statementsFromReported(symbol) {
+    const a = await annual(symbol, 'full');
+    const years = (a.years || []).filter((y) => y && FILL.some((f) => y[f] != null)).slice(-5);
+    if (!years.length) throw Object.assign(new Error(`No reported annual figures for ${symbol}`), { status: 404 });
+    const rows = {};
+    const put = (name, end, val) => { if (val != null && Number.isFinite(val)) (rows[name] ||= {})[end] = val; };
+    for (const y of years) {
+      for (const f of FILL) put(YAHOO[f], y.end, ABS.has(f) && y[f] != null ? -Math.abs(y[f]) : y[f]);
+      if (y.ocf != null && y.capex != null) put('FreeCashFlow', y.end, y.ocf - Math.abs(y.capex));
+      if (y.debt != null && y.cash != null) put('NetDebt', y.end, y.debt - y.cash);
+      if (y.opIncome != null && y.da != null) put('EBITDA', y.end, y.opIncome + y.da);
+    }
+    return { freq: 'annual', periods: years.map((y) => y.end), rows, currency: a.currency || null, layout: null, substitute: `reported company figures (${a.source || 'SEC EDGAR'}), because Yahoo's statements did not answer` };
+  }
+
+  return { annual, valuation, peers, peerRow, statementsFromReported };
 }

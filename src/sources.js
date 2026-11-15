@@ -108,6 +108,11 @@ export function na(reason, fallback = 'not meaningful (negative or zero where a 
   return /sources disagree/.test(r) ? button('warn', 'sources disagree', r) : button('na', 'n/a', `n/a: ${r}`);
 }
 
+/** Small marker for a figure Yahoo didn't have, filled from another source (tap for where from). */
+export function filled(src) {
+  return button('mix', 'alt', `Yahoo had no figure here. Filled from another source: ${src}`);
+}
+
 /** A table cell's content: the formatted value plus its marker, or an explained n/a. */
 export function cell(text, value, y, fields, prev = null, prevFields = []) {
   if (!fin(value)) return na(why(y, fields, prev, prevFields));

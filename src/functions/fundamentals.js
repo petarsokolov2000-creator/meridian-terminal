@@ -8,6 +8,7 @@ import { num, big, pct, signed, dir, esc, el } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { deferred, strip, kv } from './live-fns.js';
 import { help } from '../glossary.js';
+import { na, filled } from '../sources.js';
 
 const needsReal = (what) => (ctx) => {
   ctx.el.innerHTML = `<div class="empty">${esc(what)} needs real company data. Switch with <kbd>MODE LIVE</kbd> (Meridian has to be running from its icon).</div>`;
@@ -73,7 +74,7 @@ function finLive(ctx) {
           const v = f(d.rows, p);
           return `<td class="r dim">${Number.isFinite(v) ? pc(v) : '—'}</td>`;
         }).join('')}<td></td></tr>`).join('') : ''}
-        </tbody></table></div><p class="note">Source: Yahoo Finance (company filings). Δ last = change versus the previous ${st.freq === 'annual' ? 'fiscal year' : 'quarter'}. Use <kbd>${esc(s.sym)} FILE</kbd> for the original SEC reports.</p>`
+        </tbody></table></div><p class="note">Source: ${d.substitute ? `${esc(d.substitute)}; only the line items the filings give are shown` : 'Yahoo Finance (company filings)'}. Δ last = change versus the previous ${st.freq === 'annual' ? 'fiscal year' : 'quarter'}. Use <kbd>${esc(s.sym)} FILE</kbd> for the original SEC reports.</p>`
         : '<div class="empty">Yahoo has none of these line items for this company.</div>';
     }).catch((err) => {
       if (!gone) body.innerHTML = `<div class="empty">Couldn't load statements: ${esc(err.message)}</div>`;
@@ -232,7 +233,24 @@ register({
         ['Price & trend', [['Beta · 5Y monthly (Yahoo)', num(k.beta, 2)], ['Beta · 1Y daily vs S&amp;P 500 (Meridian)', num(s.histBeta, 2)], ['52-week change', pc(k.change52)], ['52-week range', `${num(k.low52, 2)} – ${num(k.high52, 2)}`], ['50-day average', `${num(k.ma50, 2)} (${vsMa(k.ma50)})`], ['200-day average', `${num(k.ma200, 2)} (${vsMa(k.ma200)})`]]],
         ['Dividends & dates', [['Dividend / share', num(k.dividendRate, 2)], ['Dividend yield', pc(k.dividendYield, 2)], ['5-yr avg yield', k.avgYield5y == null ? '—' : `${num(k.avgYield5y, 2)}%`], ['Payout ratio', pc(k.payoutRatio)], ['Ex-dividend date', date(k.exDividend)], ['Last split', k.lastSplit ? `${esc(k.lastSplit)} (${date(k.lastSplitDate)})` : '—'], ['Fiscal year end', date(k.fiscalYearEnd)], ['Latest quarter', date(k.mostRecentQuarter)]]],
       ];
-      host.innerHTML = `<div class="keys">${groups.map(([title, rows]) => `<div class="pane"><h3>${title}</h3><div class="facts">${rows.map(([a, b]) => kv(`${a}${help(a)}`, b)).join('')}</div></div>`).join('')}</div><p class="note">Source: Yahoo Finance (quoteSummary), as of ${new Date().toISOString().slice(0, 10)}; the latest reported quarter is shown under Dividends &amp; dates. Short interest is reported twice a month. The two betas differ because they measure different periods: Yahoo uses 5 years of monthly returns, Meridian 1 year of daily returns against the S&amp;P 500.</p>`;
+      // every row is tied to its statistic: a figure Yahoo lacked is filled from other sources (marked "alt"), and one that
+      // stays empty explains why instead of a bare dash
+      const FIELD = { 'Market cap': 'marketCap', 'Enterprise value': 'ev', 'P/E (trailing)': 'trailingPE', 'P/E (forward)': 'forwardPE', 'PEG ratio': 'peg', 'Price / sales': 'priceToSales', 'Price / book': 'priceToBook', 'EV / revenue': 'evRevenue', 'EV / EBITDA': 'evEbitda', 'Gross margin': 'grossMargin', 'Operating margin': 'operatingMargin', 'Profit margin': 'profitMargin', 'Return on equity': 'roe', 'Return on assets': 'roa', 'Revenue growth (yoy)': 'revenueGrowth', 'Earnings growth (yoy)': 'earningsGrowth', 'EPS (trailing)': 'trailingEps', 'EPS (forward)': 'forwardEps', 'Total cash': 'totalCash', 'Total debt': 'totalDebt', 'Debt / equity (total debt ÷ equity)': 'debtToEquity', 'Current ratio': 'currentRatio', 'Quick ratio': 'quickRatio', 'Operating cash flow': 'ocf', 'Free cash flow': 'fcf', 'Book value / share': 'bookValue', 'Shares outstanding': 'shares', Float: 'float', 'Shares short': 'sharesShort', 'Short % of float': 'shortFloat', 'Days to cover': 'shortRatio', 'Short change (1 mo)': 'sharesShortPrior', 'Avg volume (3 mo)': 'avgVolume', 'Avg volume (10 d)': 'avgVolume10d', 'Beta · 5Y monthly (Yahoo)': 'beta', '52-week change': 'change52', '52-week range': 'high52', '50-day average': 'ma50', '200-day average': 'ma200', 'Dividend / share': 'dividendRate', 'Dividend yield': 'dividendYield', '5-yr avg yield': 'avgYield5y', 'Payout ratio': 'payoutRatio', 'Ex-dividend date': 'exDividend', 'Last split': 'lastSplit', 'Fiscal year end': 'fiscalYearEnd', 'Latest quarter': 'mostRecentQuarter' };
+      const how = d.statsSrc || {};
+      const reasons = d.statsWhy || {};
+      const missing = [];
+      let nFilled = 0;
+      for (const g of groups) {
+        g[1] = g[1].map(([label, value]) => {
+          const f = FIELD[label.replace(/<[^>]*>/g, '')] || FIELD[label];
+          if (!f) return [label, value];
+          if (k[f] == null) { missing.push(label); return [label, na(reasons[f] || 'not reported by any source')]; }
+          if (how[f]) nFilled++;
+          return [label, how[f] ? `${value}${filled(how[f])}` : value];
+        });
+      }
+      const banner = d.partial ? `<p class="note warn">${esc(d.partial)}.</p>` : '';
+      host.innerHTML = `${banner}<div class="keys">${groups.map(([title, rows]) => `<div class="pane"><h3>${title}</h3><div class="facts">${rows.map(([a, b]) => kv(`${a}${help(a)}`, b)).join('')}</div></div>`).join('')}</div><p class="note">Source: Yahoo Finance (quoteSummary), as of ${new Date().toISOString().slice(0, 10)}; the latest reported quarter is shown under Dividends &amp; dates. Short interest is reported twice a month. The two betas differ because they measure different periods: Yahoo uses 5 years of monthly returns, Meridian 1 year of daily returns against the S&amp;P 500.${nFilled ? ` <b>${nFilled}</b> figure${nFilled === 1 ? '' : 's'} Yahoo didn't have ${nFilled === 1 ? 'was' : 'were'} filled from other sources (marked <span class="srcm mix">alt</span>: price history, the quote feed, or the company's reported SEC/Yahoo/Finnhub figures).` : ''}${missing.length ? ` ${missing.length} stay${missing.length === 1 ? 's' : ''} n/a because no source has ${missing.length === 1 ? 'it' : 'them'}; tap n/a for the reason.` : ' Nothing is missing.'}</p>`;
     }).catch((err) => (host.innerHTML = `<div class="empty">Couldn't load statistics: ${esc(err.message)}</div>`));
     host.innerHTML = '<div class="empty">Loading…</div>';
     return { update: head };

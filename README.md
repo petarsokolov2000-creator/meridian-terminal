@@ -175,7 +175,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | News | `NEWS` `CN` `FILE` |
 | Analytics | `OPT` `OVME` `BETA` `VOLA` `CORR` `SCAT` `DCF` `BT` |
 | Trading | `PORT` `MARS` `ALRT` `BOOK` `TAPE` |
-| System | `HELP` |
+| System | `HELP` `GAPS` |
 
 New in this release, in plain words:
 
@@ -197,6 +197,16 @@ New in this release, in plain words:
   and what each purchase is worth now. Trades under $10,000 are shown but not counted. Selling is never marked as a warning:
   insiders sell for many reasons, they buy for one. `INSIDER WATCH`, `INSIDER PORT` or `INSIDER MARKET` ranks a whole list.
   Limits: Yahoo lists at most the latest 120 filings and does not mark pre-planned (10b5-1) sales.
+- `GAPS` (also `NACHECK`, `COVERAGE`): data coverage of one stock (`AAPL GAPS`). Per area (key statistics, analysts and ownership,
+  reported figures of the last year, latest 12 months) it shows how many figures exist, which are empty and the reason, and
+  how many were filled from a second source. Figures that are often truly absent (dividends, buybacks, forward estimates,
+  short interest) are listed but not counted against the score.
+- **Fewer n/a**: `KEYS` no longer depends on Yahoo's statistics page alone. What Yahoo leaves out (or all of it, when Yahoo
+  answers HTTP 429) is worked out from the price history (52-week range, moving averages, volume, beta), the quote feed and
+  the company's reported figures (SEC, then Yahoo, then Finnhub): margins, returns, cash, debt, book value, free cash flow and
+  the multiples. Such figures carry an `alt` marker (tap it for the source) and a figure that stays empty says why when you
+  tap `n/a`. `FIN` (annual) falls back to the reported SEC/Finnhub figures when Yahoo's statements are throttled.
+  Analyst estimates, ratings, ownership and insider lists exist only at Yahoo and cannot be rebuilt.
 - `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
   slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
   debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year or sum the last 5.

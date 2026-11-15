@@ -619,7 +619,7 @@ export async function mockFetch(url) {
   if (u.hostname === 'api.frankfurter.dev') return ok({ amount: 1, base: 'USD', date: '2026-10-30', rates: { EUR: 0.925, JPY: 151.3, KRW: 1360.5, CNY: 7.21, GBP: 0.78 } });
   if (u.hostname === 'api.stlouisfed.org') return fred(u);
   if (u.hostname === 'www.sec.gov' || u.hostname === 'data.sec.gov') return sec(u);
-  if (u.pathname.startsWith('/ws/fundamentals-timeseries/')) return ok(timeseries(u));
+  if (u.pathname.startsWith('/ws/fundamentals-timeseries/')) return process.env.MERIDIAN_MOCK_THROTTLE ? new Response('Too Many Requests', { status: 429 }) : ok(timeseries(u));
   if (u.hostname === 'fc.yahoo.com') return new Response('', { status: 404, headers: { 'set-cookie': 'A3=mock; Path=/' } });
   if (u.pathname === '/v1/test/getcrumb') return new Response('mockcrumb', { status: 200 });
   let m;
@@ -627,6 +627,8 @@ export async function mockFetch(url) {
   if ((m = u.pathname.match(/^\/v8\/finance\/chart\/(.+)$/))) return ok(chart(decodeURIComponent(m[1]), u.searchParams.get('range'), u.searchParams.get('interval')));
   if (u.pathname === '/v7/finance/quote') return ok(quote(u.searchParams.get('symbols').split(',').filter((x) => x !== 'KRW=X')));
   if ((m = u.pathname.match(/^\/v7\/finance\/options\/(.+)$/))) return ok(options(decodeURIComponent(m[1])));
+  // MERIDIAN_MOCK_THROTTLE=1 answers 429 on the statistics page, as a throttled Yahoo does, to test the gap-filling fallback
+  if (process.env.MERIDIAN_MOCK_THROTTLE && /^\/v10\/finance\/quoteSummary\//.test(u.pathname)) return new Response('Too Many Requests', { status: 429 });
   if ((m = u.pathname.match(/^\/v10\/finance\/quoteSummary\/(.+)$/))) return ok(summary(decodeURIComponent(m[1])));
   if (u.pathname === '/v1/finance/search') return ok(news(u.searchParams.get('q'), Number(u.searchParams.get('quotesCount')) > 0));
   return new Response('not found', { status: 404 });

@@ -27,6 +27,7 @@ import './functions/analysts.js';
 import './functions/notes.js';
 import './functions/insider.js';
 import './functions/alloc.js';
+import './functions/gaps.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [

@@ -16,6 +16,7 @@ import { createSec } from './sec.mjs';
 import { MORE_COMPANIES } from '../src/companies.js';
 import { LIVE_EQUITIES } from '../src/live-universe.js';
 import { createFundamentals } from './fundamentals.mjs';
+import { fillStats } from './gapfill.mjs';
 import { createTenK } from './tenk.mjs';
 
 export const KEYS = {
@@ -43,6 +44,7 @@ const syms = (v) => String(v || '').split(',').map((s) => s.trim()).filter((s) =
 export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket, keyStore, historyStore, kvStore = null, currentVersion, hostInfo = null, universe, mock = false, log = console.warn }) {
   const opts = { fetchImpl };
   const yahoo = createYahoo(opts);
+  const detailsMemo = new Map();
   const finnhub = createFinnhub({ getKey: () => keyStore.get('finnhub'), ...opts, WebSocketImpl });
   const fred = createFred({ getKey: () => keyStore.get('fred'), ...opts });
   const rates = createRates(opts);
@@ -251,8 +253,51 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     '/api/finnhub/earnings': async () => finnhub.earnings(),
     '/api/finnhub/economic': async () => finnhub.economic(),
     // Company financials: statements (annual/quarterly), earnings & ownership, dividends, filings.
-    '/api/statements': async (q) => yahoo.statements(needSym(q), q.get('freq')),
-    '/api/details': async (q) => yahoo.details(needSym(q)),
+    '/api/statements': async (q) => {
+      const sym = needSym(q);
+      try {
+        return await yahoo.statements(sym, q.get('freq'));
+      } catch (err) {
+        // Yahoo refused: the annual statements can still be built from the SEC / Finnhub figures
+        if (q.get('freq') === 'quarterly' || q.get('freq') === 'trailing') throw err;
+        try {
+          return await fundamentals.statementsFromReported(sym);
+        } catch {
+          throw err;
+        }
+      }
+    },
+    // Yahoo's statistics page, with every hole filled from other sources (price history, quote, SEC/Yahoo/Finnhub
+    // figures) and a note of where each filled figure came from. If Yahoo refuses altogether, the rest is still returned.
+    '/api/details': async (q) => {
+      const sym = needSym(q);
+      const hit = detailsMemo.get(sym);
+      if (hit && Date.now() - hit.t < 30 * 60e3) return hit.v;
+      let d = null;
+      let yahooError = null;
+      try {
+        d = await yahoo.details(sym);
+      } catch (err) {
+        yahooError = err;
+      }
+      const filled = await fillStats(d?.stats, sym, {
+        bars: () => yahoo.chart(sym, '1y', '1d'),
+        mktBars: () => yahoo.chart('^GSPC', '1y', '1d'),
+        quote: async () => (await yahoo.quotes([sym], { fallback: false })).quotes[sym] || null,
+        annual: () => fundamentals.annual(sym, 'full'),
+      });
+      const got = Object.keys(filled.src).length;
+      if (!d && !got) throw yahooError; // nothing from anywhere: report Yahoo's error as before
+      const out = {
+        earnings: [], estimates: [], ownership: {}, institutions: [], funds: [], insiders: [],
+        ...(d || {}),
+        stats: filled.stats, statsSrc: filled.src, statsWhy: filled.why,
+        partial: d ? null : `Yahoo's statistics page did not answer (${yahooError?.message || 'error'}); the figures below come from price history and reported financials`,
+      };
+      // an incomplete answer is kept only briefly so the next call can try Yahoo again
+      detailsMemo.set(sym, { t: d ? Date.now() : Date.now() - 25 * 60e3, v: out });
+      return out;
+    },
     '/api/events': async (q) => yahoo.events(needSym(q)),
     // The SEC first (official, complete); if it refuses or is unreachable, Yahoo's list.
     '/api/filings': async (q) => {

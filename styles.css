@@ -570,3 +570,11 @@ a.doc:hover { text-decoration: underline; }
 .alloc-key { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 8px 6px; font-size: 11px; color: var(--dim); }
 .sw { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
 .alloc-key .sw { margin-right: 4px; }
+
+/* GAPS: data coverage */
+.gaps-pane .gaps-pct { float: right; font-weight: 600; letter-spacing: 0; }
+.gaps-pane .tbl td { padding: 2px 8px; }
+.gaps-pane .note { margin: 4px 0; }
+.gaps-pane .gaps-pct, .gaps-pane .gaps-pct.up, .gaps-pane .gaps-pct.dn { color: inherit; }
+.gaps-pane .tbl td { white-space: normal; max-width: none; overflow: visible; text-overflow: clip; vertical-align: top; }
+.gaps-pane .tbl td.l:first-child { white-space: nowrap; }

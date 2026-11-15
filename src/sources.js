@@ -12,7 +12,7 @@ const NAME = { SEC: 'SEC EDGAR', Yahoo: 'Yahoo Finance', Finnhub: 'Finnhub' };
 export const LABEL = {
   revenue: 'Revenue', opIncome: 'Operating income', grossProfit: 'Gross profit', cogs: 'Cost of revenue', nonInterestExpense: 'Non-interest expense', prefDividends: 'Preferred dividends',
   pretax: 'Pre-tax income', interest: 'Interest expense', tax: 'Income tax', netIncome: 'Net income', da: 'Depreciation & amortization', ocf: 'Operating cash flow', capex: 'Capital expenditure',
-  sbc: 'Stock-based pay', buybacks: 'Buybacks', dividendsPaid: 'Dividends paid', epsDil: 'Diluted EPS', dps: 'Dividends per share', sharesDil: 'Diluted shares', sharesOut: 'Shares outstanding',
+  sbc: 'Stock-based pay', buybacks: 'Buybacks', dividendsPaid: 'Dividends paid', rnd: 'Research & development', acquisitions: 'Acquisitions', debtRepaid: 'Debt repaid', epsDil: 'Diluted EPS', dps: 'Dividends per share', sharesDil: 'Diluted shares', sharesOut: 'Shares outstanding',
   cash: 'Cash', stInvest: 'Short-term investments', assets: 'Total assets', equity: "Shareholders' equity", preferred: 'Preferred stock', goodwill: 'Goodwill', intangibles: 'Intangible assets',
   debt: 'Debt', ebit: 'EBIT', ebitda: 'EBITDA', fcf: 'Free cash flow', cashAll: 'Cash & short-term investments', netDebt: 'Net debt', commonEquity: 'Common equity', tangibleEquity: 'Tangible common equity', shares: 'Share count',
 };

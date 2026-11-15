@@ -26,6 +26,7 @@ import './functions/bql.js';
 import './functions/analysts.js';
 import './functions/notes.js';
 import './functions/insider.js';
+import './functions/alloc.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [

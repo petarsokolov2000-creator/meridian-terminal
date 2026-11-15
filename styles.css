@@ -553,3 +553,20 @@ a.doc:hover { text-decoration: underline; }
 /* change cells are filled; src/desk-tint.js sets --tint (stronger move = stronger fill) */
 :root[data-theme='desk'] .tbl td[data-tint].up { background: rgba(var(--tint-up), var(--tint)); color: #fff; }
 :root[data-theme='desk'] .tbl td[data-tint].down { background: rgba(var(--tint-down), var(--tint)); color: #fff; }
+
+/* ALLOC: where the money goes (donut chart and share history) */
+.alloc-main { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 10px 8px; }
+.alloc-pie { flex: 0 0 auto; width: 210px; max-width: 100%; }
+.alloc-tbl { flex: 1 1 260px; min-width: 240px; }
+.pie { width: 100%; height: auto; display: block; }
+.pie-s { transition: stroke-width 0.12s; }
+.pie-s.hot { stroke-width: 40px !important; }
+.pie-big { fill: var(--text); font: 700 20px var(--mono); }
+.pie-sub { fill: var(--dim); font: 10px var(--mono); }
+.pie-axis { fill: var(--dim); font: 9px var(--mono); }
+.pie-hist { width: 100%; max-width: 560px; height: auto; display: block; }
+.alloc-h { margin: 8px 8px 2px; }
+.alloc-hist { padding: 0 8px; }
+.alloc-key { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 8px 6px; font-size: 11px; color: var(--dim); }
+.sw { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
+.alloc-key .sw { margin-right: 4px; }

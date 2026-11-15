@@ -46,6 +46,7 @@ longer history when you pick them.
 | `AAPL HOLD` | Insider and institutional ownership, top institutions and funds, recent insider buys and sales (`INSIDER` goes deeper) | Yahoo Finance |
 | `AAPL DVD` | Every dividend on record, yearly totals and growth, trailing yield, stock splits | Yahoo Finance |
 | `AAPL KEYS` | Valuation multiples, margins and returns, balance-sheet ratios, short interest (`SI` goes deeper), moving averages, dividend data | Yahoo Finance |
+| `AAPL ALLOC` | Where the company puts its money: pie chart of dividends, buybacks, capex, R&D, acquisitions, debt repaid and what is kept, per fiscal year or summed over 5 years, with share history | SEC EDGAR, Yahoo, Finnhub |
 | `AAPL FILE` | Official SEC filings (10-K, 10-Q, 8-K, insider Forms 3/4/5, proxies, 13D/G) with links to the documents | SEC EDGAR |
 
 These also work for any ticker you add. SEC filings exist for companies listed in the US.
@@ -168,7 +169,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | Area | Codes |
 | --- | --- |
 | Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
 | News | `NEWS` `CN` `FILE` |
@@ -196,6 +197,9 @@ New in this release, in plain words:
   and what each purchase is worth now. Trades under $10,000 are shown but not counted. Selling is never marked as a warning:
   insiders sell for many reasons, they buy for one. `INSIDER WATCH`, `INSIDER PORT` or `INSIDER MARKET` ranks a whole list.
   Limits: Yahoo lists at most the latest 120 filings and does not mark pre-planned (10b5-1) sales.
+- `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
+  slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
+  debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year or sum the last 5.
 - `SI`: short interest of one stock (`TSLA SI`): shares sold short, percent of the float, days to cover, change against the
   report a month earlier, a squeeze check (15%+ of the float and 4+ days to cover) and a history that builds up on your
   device. If you hold the stock short in `PORT`, it says so. `SI WATCH`, `SI PORT` or `SI MARKET` ranks a list.

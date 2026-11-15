@@ -43,6 +43,10 @@ const TAGS = [
   ['sbc', 'd', 'USD', ['ShareBasedCompensation', 'AllocatedShareBasedCompensationExpense'], 'full'],
   ['buybacks', 'd', 'USD', ['PaymentsForRepurchaseOfCommonStock'], 'full'],
   ['dividendsPaid', 'd', 'USD', ['PaymentsOfDividendsCommonStock', 'PaymentsOfDividends'], 'full'],
+  // where the cash goes (ALLOC): research, acquisitions, debt repaid
+  ['rnd', 'd', 'USD', ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost', 'ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost'], 'full'],
+  ['acquisitions', 'd', 'USD', ['PaymentsToAcquireBusinessesNetOfCashAcquired', 'PaymentsToAcquireBusinessesGross'], 'full'],
+  ['debtRepaid', 'd', 'USD', ['RepaymentsOfDebt', 'RepaymentsOfLongTermDebt', 'RepaymentsOfSeniorDebt', 'RepaymentsOfNotesPayable'], 'full'],
   ['epsDil', 'd', 'USD/shares', ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted']],
   ['dps', 'd', 'USD/shares', ['CommonStockDividendsPerShareDeclared', 'CommonStockDividendsPerShareCashPaid']],
   ['sharesDil', 'd', 'shares', ['WeightedAverageNumberOfDilutedSharesOutstanding', 'WeightedAverageNumberOfShareOutstandingBasicAndDiluted']],
@@ -66,7 +70,7 @@ const UNIT_OF = Object.fromEntries(TAGS.map((t) => [t[0], t[2]]));
 export const LABEL = {
   revenue: 'revenue', opIncome: 'operating income', grossProfit: 'gross profit', cogs: 'cost of revenue', nonInterestExpense: 'non-interest expense', prefDividends: 'preferred dividends',
   pretax: 'pre-tax income', interest: 'interest expense', tax: 'income tax', netIncome: 'net income', da: 'depreciation & amortization', ocf: 'operating cash flow', capex: 'capital expenditure',
-  sbc: 'stock-based pay', buybacks: 'buybacks', dividendsPaid: 'dividends paid', epsDil: 'diluted EPS', dps: 'dividends per share', sharesDil: 'diluted shares', sharesOut: 'shares outstanding',
+  sbc: 'stock-based pay', buybacks: 'buybacks', dividendsPaid: 'dividends paid', rnd: 'research & development', acquisitions: 'acquisitions', debtRepaid: 'debt repaid', epsDil: 'diluted EPS', dps: 'dividends per share', sharesDil: 'diluted shares', sharesOut: 'shares outstanding',
   cash: 'cash', stInvest: 'short-term investments', ltdTotal: 'long-term debt', ltdNoncurrent: 'long-term debt', ltdCurrent: 'current long-term debt', shortDebt: 'short-term borrowings',
   assets: 'total assets', equity: "shareholders' equity", preferred: 'preferred stock', goodwill: 'goodwill', intangibles: 'intangible assets', debt: 'debt',
   ebit: 'EBIT', ebitda: 'EBITDA', fcf: 'free cash flow', cashAll: 'cash & short-term investments', netDebt: 'net debt', commonEquity: 'common equity', tangibleEquity: 'tangible common equity', shares: 'share count',
@@ -76,10 +80,11 @@ export const LABEL = {
 const YAHOO = {
   revenue: 'TotalRevenue', cogs: 'CostOfRevenue', grossProfit: 'GrossProfit', opIncome: 'OperatingIncome', pretax: 'PretaxIncome', interest: 'InterestExpense', tax: 'TaxProvision', netIncome: 'NetIncome',
   da: 'DepreciationAndAmortization', ocf: 'OperatingCashFlow', capex: 'CapitalExpenditure', sbc: 'StockBasedCompensation', buybacks: 'RepurchaseOfCapitalStock', dividendsPaid: 'CashDividendsPaid',
+  rnd: 'ResearchAndDevelopment', acquisitions: 'PurchaseOfBusiness', debtRepaid: 'RepaymentOfDebt',
   epsDil: 'DilutedEPS', sharesDil: 'DilutedAverageShares', sharesOut: 'OrdinarySharesNumber', cash: 'CashAndCashEquivalents', stInvest: 'OtherShortTermInvestments', assets: 'TotalAssets',
   equity: 'StockholdersEquity', goodwill: 'Goodwill', intangibles: 'OtherIntangibleAssets', preferred: 'PreferredStock', debt: 'TotalDebt',
 };
-const ABS = new Set(['capex', 'buybacks', 'dividendsPaid']);
+const ABS = new Set(['capex', 'buybacks', 'dividendsPaid', 'acquisitions', 'debtRepaid']);
 const FILL = Object.keys(YAHOO);
 // Banks and insurers: no fallback for what feeds free cash flow, EBITDA and enterprise value.
 const BANK_SKIP = new Set(['ocf', 'capex', 'da', 'debt', 'cash', 'stInvest']);

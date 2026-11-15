@@ -232,7 +232,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
 
   // Extra line items fetched with the statements but not shown in FA's tables: Meridian's
   // fallback for figures the SEC data lacks (server/fundamentals.mjs).
-  const EXTRA = ['OtherShortTermInvestments', 'Goodwill', 'OtherIntangibleAssets', 'PreferredStock'];
+  const EXTRA = ['OtherShortTermInvestments', 'Goodwill', 'OtherIntangibleAssets', 'PreferredStock', 'PurchaseOfBusiness', 'RepaymentOfDebt'];
   // The "trailing" series (last 12 months) exist only for income and cash-flow items.
   const TRAILING = [...STATEMENTS.income, ...STATEMENTS.cashflow];
 

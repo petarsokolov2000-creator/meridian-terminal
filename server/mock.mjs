@@ -278,6 +278,10 @@ const REAL = {
       ShareBasedCompensation: [3586, 4210, 4840, 5340, 6068, 6829, 7906, 9038, 10833, 11688],
       PaymentsForRepurchaseOfCommonStock: [35253, 29722, 32900, 72738, 66897, 72358, 85971, 89402, 77550, 94949],
       PaymentsOfDividends: [11561, 12150, 12769, 13712, 14119, 14081, 14467, 14841, 15025, 15234],
+      // research, acquisitions and debt repaid: test values (rounded), not copied from the filings
+      ResearchAndDevelopmentExpense: [8067, 10045, 11581, 14236, 16217, 18752, 21914, 26251, 29915, 31370],
+      PaymentsToAcquireBusinessesNetOfCashAcquired: [343, 297, 329, 721, 624, 1524, 33, 306, null, null],
+      RepaymentsOfLongTermDebt: [2500, 2500, 3500, 6500, 8805, 12629, 8750, 9543, 11151, 9958],
     },
     i: {
       CashAndCashEquivalentsAtCarryingValue: [null, null, null, 25913, 48844, 38016, 34940, 23646, 29965, 29943],
@@ -294,7 +298,8 @@ const REAL = {
   XOM: { cik: 34088, sic: 2911, sicDescription: 'PETROLEUM REFINING', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
     d: { Revenues: [344582, 349585], NetIncomeLoss: [36010, 33680], DepreciationDepletionAndAmortization: [20641, 23442], NetCashProvidedByUsedInOperatingActivities: [55369, 55022],
       PaymentsToAcquirePropertyPlantAndEquipment: [21919, 24306], EarningsPerShareDiluted: [8.89, 7.84], WeightedAverageNumberOfDilutedSharesOutstanding: [4052, 4299],
-      PaymentsForRepurchaseOfCommonStock: [17748, 19629], PaymentsOfDividendsCommonStock: [14941, 16704] },
+      PaymentsForRepurchaseOfCommonStock: [17748, 19629], PaymentsOfDividendsCommonStock: [14941, 16704],
+      PaymentsToAcquireBusinessesNetOfCashAcquired: [null, 450], RepaymentsOfLongTermDebt: [2800, 1900] },
     i: { CashAndCashEquivalentsAtCarryingValue: [31539, 23029], LongTermDebtNoncurrent: [37483, 36755], ShortTermBorrowings: [4090, 4955], StockholdersEquity: [204802, 263705], CommonStockSharesOutstanding: [3973, 4343] },
   },
   JPM: { cik: 19617, sic: 6021, sicDescription: 'NATIONAL COMMERCIAL BANKS', fye: '1231', ends: ['2023-12-31', '2024-12-31'],
@@ -359,7 +364,7 @@ function secConcept(cik, tag) {
   const r = rng(seedOf(`${cik}${tag}`));
   const want = { RevenueFromContractWithCustomerExcludingAssessedTax: 40000, OperatingIncomeLoss: 8000, NetIncomeLoss: 6000, DepreciationDepletionAndAmortization: 1500, NetCashProvidedByUsedInOperatingActivities: 9000,
     PaymentsToAcquirePropertyPlantAndEquipment: 2000, EarningsPerShareDiluted: 4, WeightedAverageNumberOfDilutedSharesOutstanding: 1500, CashAndCashEquivalentsAtCarryingValue: 5000, LongTermDebt: 12000,
-    StockholdersEquity: 20000, CommonStockSharesOutstanding: 1480, InterestExpense: 400, IncomeTaxExpenseBenefit: 1300, ShareBasedCompensation: 600, PaymentsForRepurchaseOfCommonStock: 2500, PaymentsOfDividends: 1500,
+    StockholdersEquity: 20000, CommonStockSharesOutstanding: 1480, InterestExpense: 400, IncomeTaxExpenseBenefit: 1300, ShareBasedCompensation: 600, PaymentsForRepurchaseOfCommonStock: 2500, PaymentsOfDividends: 1500, ResearchAndDevelopmentExpense: 900, PaymentsToAcquireBusinessesNetOfCashAcquired: 600, RepaymentsOfLongTermDebt: 1100,
     GrossProfit: 18000, IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest: 7600, Assets: 60000 }[tag];
   if (!want) return null;
   for (let k = 0; k < 12; k++) {

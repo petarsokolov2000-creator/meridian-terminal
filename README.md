@@ -192,7 +192,7 @@ New in this release, in plain words:
   `REV WATCH` or `REV PORT` ranks your whole list by how estimates are moving.
 - `CRED`: debt-safety scorecard from the filings (leverage, interest cover, cash flow and cash against debt, liquidity).
   Not a credit rating: agency ratings, bond prices and CDS are paid data.
-- `SUPP` now also shows the indirect chain (suppliers of suppliers, customers of customers, `SUPP AAPL 3` for three tiers) and
+- `SUPP` now also draws the indirect chain on the map (suppliers of suppliers, customers of customers: `SUPP TSM 3`, or the 1/2/3 tiers buttons; the map stops where no links are on file) and
   lets you add your own links (`SUPP ADD <supplier> <customer> <what>`), saved on your device and marked "yours".
   The built-in list is a hand-checked snapshot of notable relationships, not a data feed with hundreds of links per company.
 

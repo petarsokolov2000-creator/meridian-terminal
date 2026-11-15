@@ -486,3 +486,5 @@ a.doc:hover { text-decoration: underline; }
 .ovme-top select { max-width: 280px; }
 .ovme-kpi { flex-wrap: wrap; }
 @media (max-width: 900px) { .ovme input[type=number] { width: 70px; } .ovme-top label:first-child { flex: 1 1 100%; } .ovme-top select { max-width: none; width: 100%; min-width: 0; } .ovme-top label:first-child select { flex: 1; } }
+.supp-map.multi { overflow-x: auto; }
+.supp-map.multi svg { display: block; }

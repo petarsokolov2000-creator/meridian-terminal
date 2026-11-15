@@ -163,18 +163,38 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
   Bollinger, RSI, MACD, VWAP and volume. Includes crosshair, wheel zoom, drag pan,
   comparison mode, and an XY plot for curves and scatters.
 
-## Functions (38)
+## Functions
 
 | Area | Codes |
 | --- | --- |
-| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `DVD` `KEYS` `ANLY` |
+| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
 | News | `NEWS` `CN` `FILE` |
-| Analytics | `OPT` `BETA` `VOLA` `CORR` `SCAT` |
-| Trading | `PORT` `ALRT` `BOOK` `TAPE` |
+| Analytics | `OPT` `OVME` `BETA` `VOLA` `CORR` `SCAT` `DCF` `BT` |
+| Trading | `PORT` `MARS` `ALRT` `BOOK` `TAPE` |
 | System | `HELP` |
+
+New in this release, in plain words:
+
+- `BREADTH [US|EU|ASIA|ALL]`: new 52-week highs and lows, how many stocks sit above their 20/50/200-day average, advancers
+  against decliners, by sector, and a chart of the share above the 50-day average over time. All-time records need the full
+  price history, which isn't loaded for every stock (`<ticker> CHART MAX`).
+- `OVME`: value an option or a whole strategy (long call/put, covered call, collar, bull/bear spread, straddle, strangle, iron
+  condor, or your own legs): Greeks, profit/loss chart, break-evens, a model chance of profit. Black-Scholes with one
+  volatility per strategy, so type real quotes into the Price boxes for a realistic picture.
+- `MARS`: risk of your `PORT` book: long/short/gross/net and beta-adjusted exposure, 1-day Value-at-Risk (historical), risk by
+  position, stress tests, long book against short book. `PORT` can now sell short (stocks and ETFs; `SELL` more than you hold,
+  `BUY` covers; all shorts together can't exceed the net value).
+- `BQL`: your own screens as formulas: `BQL ALL: px, ret6m / vol AS ratio WHERE pe < 20 SORT ratio DESC TOP 15`.
+- `REV`: analyst EPS estimates now against 7/30/60/90 days ago, who raised or cut, price targets, latest rating changes;
+  `REV WATCH` or `REV PORT` ranks your whole list by how estimates are moving.
+- `CRED`: debt-safety scorecard from the filings (leverage, interest cover, cash flow and cash against debt, liquidity).
+  Not a credit rating: agency ratings, bond prices and CDS are paid data.
+- `SUPP` now also shows the indirect chain (suppliers of suppliers, customers of customers, `SUPP AAPL 3` for three tiers) and
+  lets you add your own links (`SUPP ADD <supplier> <customer> <what>`), saved on your device and marked "yours".
+  The built-in list is a hand-checked snapshot of notable relationships, not a data feed with hundreds of links per company.
 
 Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `CHART AAPL VS MSFT`, `SCRN pe<20 yld>2 sort=-chg`,
 `BUY AAPL 100` (paper trading), `ALRT AAPL > 250`, `MODE LIVE|SIM`, `THEME`, `LAYOUT TABS` (one big panel with tabs; phones start this way; `+` or `TAB` opens more tabs, up to 12, which start empty, `×` or `TAB CLOSE` closes one; the four-panel view shows the first four) or `LAYOUT 4` (four panels on one screen; the button at the top switches too), `RESET`.

@@ -304,13 +304,41 @@ export const LINKS = [
 
 
 
-/** Suppliers and customers of `sym`, each { sym, what, basis }. */
-export function chainOf(sym) {
+/** Suppliers and customers of `sym`, each { sym, what, basis }. `extra` = more links in LINKS' shape (your own). */
+export function chainOf(sym, extra = []) {
   const s = String(sym).toUpperCase();
+  const all = extra.length ? [...LINKS, ...extra] : LINKS;
   return {
-    suppliers: LINKS.filter((l) => l[1] === s).map(([from, , what, basis]) => ({ sym: from, what, basis })),
-    customers: LINKS.filter((l) => l[0] === s).map(([, to, what, basis]) => ({ sym: to, what, basis })),
+    suppliers: all.filter((l) => l[1] === s).map(([from, , what, basis]) => ({ sym: from, what, basis })),
+    customers: all.filter((l) => l[0] === s).map(([, to, what, basis]) => ({ sym: to, what, basis })),
   };
+}
+
+/**
+ * The indirect chain: who supplies your suppliers (tier 2), and their suppliers (tier 3), and the same
+ * for customers. Each company appears once, at its nearest tier, with the company it reaches you through.
+ * Built only from the links on file, so it grows as links are added.
+ */
+export function tiersOf(sym, depth = 2, extra = []) {
+  const root = String(sym).toUpperCase();
+  const out = { suppliers: [], customers: [] };
+  for (const side of ['suppliers', 'customers']) {
+    const seen = new Set([root]);
+    let frontier = [root];
+    for (let tier = 1; tier <= depth; tier++) {
+      const next = [];
+      for (const via of frontier) {
+        for (const x of chainOf(via, extra)[side]) {
+          if (seen.has(x.sym)) continue;
+          seen.add(x.sym);
+          next.push(x.sym);
+          if (tier >= 2) out[side].push({ ...x, via, tier });
+        }
+      }
+      frontier = next;
+    }
+  }
+  return out;
 }
 
 export const covered = () => [...new Set(LINKS.flatMap((l) => [l[0], l[1]]))].sort();

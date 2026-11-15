@@ -18,6 +18,11 @@ import './functions/business.js';
 import './functions/check.js';
 import './functions/status.js';
 import './functions/compare.js';
+import './functions/breadth.js';
+import './functions/ovme.js';
+import './functions/mars.js';
+import './functions/bql.js';
+import './functions/analysts.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [

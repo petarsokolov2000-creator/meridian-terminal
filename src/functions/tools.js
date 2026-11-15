@@ -351,16 +351,27 @@ export function trade(E, side, sym, qty) {
   const cost = p * qty * fx;
   if (side > 0 && cost > b.cash) return `Not enough cash: need ${big(cost)} USD, have ${big(b.cash)}`;
   const pos = b.positions[sym] || { q: 0, cost: 0 };
-  if (side < 0 && pos.q < qty) return `Short selling is off: you hold ${pos.q} ${sym}`;
-  if (side > 0) pos.cost = (pos.cost * pos.q + p * qty) / (pos.q + qty);
-  pos.q += side * qty;
+  const q0 = pos.q;
+  const newQ = pos.q + side * qty;
+  // Short selling (paper): stocks and ETFs only, and the total value of all shorts may not exceed
+  // the portfolio's net value, so a short book can't run away.
+  if (side < 0 && newQ < 0) {
+    if (i.cls !== 'EQ') return `Short selling is for stocks and ETFs only (you hold ${pos.q} ${sym})`;
+    const nav0 = b.cash + Object.entries(b.positions).reduce((a, [s2, q2]) => a + q2.q * (E.get(s2)?.last ?? 0) * fxToUsd(E, E.get(s2)?.ccy), 0);
+    const shorts = Object.entries(b.positions).filter(([s2, q2]) => s2 !== sym && q2.q < 0).reduce((a, [s2, q2]) => a + -q2.q * E.get(s2).last * fxToUsd(E, E.get(s2).ccy), 0) + -newQ * i.last * fx;
+    if (shorts > nav0) return `Short limit: all short positions together may not exceed the portfolio's net value (${big(nav0)} USD); this would make them ${big(shorts)} USD`;
+  }
+  // average price: adding to a position averages; reducing keeps it; flipping long to short (or back) restarts it
+  if (pos.q === 0 || pos.q * newQ < 0) pos.cost = p;
+  else if (Math.sign(pos.q) === side) pos.cost = (pos.cost * Math.abs(pos.q) + p * qty) / Math.abs(newQ);
+  pos.q = newQ;
   b.cash -= side * cost;
   if (pos.q === 0) delete b.positions[sym];
   else b.positions[sym] = pos;
-  b.trades.unshift({ t: E.timeLabel(), d: E.date, side: side > 0 ? 'BUY' : 'SELL', sym, qty, p });
+  b.trades.unshift({ t: E.timeLabel(), d: E.date, side: side > 0 ? (q0 < 0 ? 'COVER' : 'BUY') : newQ < 0 ? 'SHORT' : 'SELL', sym, qty, p });
   b.trades = b.trades.slice(0, 200);
   save(`book:${E.mode}`, b);
-  return `${side > 0 ? 'Bought' : 'Sold'} ${qty.toLocaleString('en-US')} ${sym} @ ${num(p, i.dp)}`;
+  return `${side > 0 ? (q0 < 0 ? 'Covered' : 'Bought') : newQ < 0 ? 'Sold short' : 'Sold'} ${qty.toLocaleString('en-US')} ${sym} @ ${num(p, i.dp)}`;
 }
 
 export function fxToUsd(E, ccy) {
@@ -373,7 +384,7 @@ export function fxToUsd(E, ccy) {
 
 register({
   code: 'PORT', aliases: ['PRTU', 'PF', 'POS'], name: 'Portfolio & P&L', cat: 'Trading',
-  help: 'PORT · trade with BUY <sym> <qty> / SELL <sym> <qty> · PORT RESET',
+  help: 'PORT · trade with BUY <sym> <qty> / SELL <sym> <qty> (selling more than you hold opens a short; BUY covers it) · PORT RESET',
   run(ctx) {
     const E = ctx.engine;
     if ((ctx.args[0] || '').toUpperCase() === 'RESET') {
@@ -384,7 +395,7 @@ register({
     ctx.el.appendChild(head);
     const t = new LiveTable(ctx.el, [
       { label: 'Ticker', value: (r) => secLink(r.i), cls: 'l' },
-      { label: 'Qty', value: (r) => r.q.toLocaleString('en-US'), cls: 'r' },
+      { label: 'Qty', value: (r) => (r.q < 0 ? `${r.q.toLocaleString('en-US')} <span class="tag">short</span>` : r.q.toLocaleString('en-US')), cls: 'r' },
       { label: 'Avg cost', value: (r) => num(r.cost, r.i.dp), cls: 'r dim' },
       { label: 'Last', value: (r) => px(r.i), cls: 'r', flash: (r) => r.i.last },
       { label: 'Chg', value: (r) => chgText(r.i), cls: 'r', cellCls: (r) => dir(r.i.chg) },
@@ -392,7 +403,7 @@ register({
       { label: 'Weight', value: (r) => `${num(r.w * 100, 1)}%`, cls: 'r dim' },
       { label: 'Day P&L', value: (r) => signed(r.day, 0), cls: 'r', cellCls: (r) => dir(r.day) },
       { label: 'Total P&L', value: (r) => signed(r.tot, 0), cls: 'r', cellCls: (r) => dir(r.tot) },
-      { label: 'Return', value: (r) => pct(r.tot / (r.cost * r.q * r.fx), 1), cls: 'r', cellCls: (r) => dir(r.tot) },
+      { label: 'Return', value: (r) => pct(r.tot / (r.cost * Math.abs(r.q) * r.fx), 1), cls: 'r', cellCls: (r) => dir(r.tot) },
     ], { onRow: (k) => ctx.app.load(k) });
     const trades = el('div', 'pane', '<h3>Blotter</h3><div class="blotter"></div>');
     ctx.el.appendChild(trades);
@@ -413,7 +424,7 @@ register({
       head.innerHTML = [['NAV', num(nav, 0)], ['Invested', num(inv, 0)], ['Cash', num(b.cash, 0)], ['Day P&L', signed(day, 0), dir(day)], ['Day %', pct(day / (nav - day)), dir(day)], ['Unrealized', signed(tot, 0), dir(tot)]]
         .map(([k, v, c = '']) => `<div><span class="dim">${k}</span><b class="${c}">${v}</b></div>`).join('');
       t.set(rows);
-      bl.innerHTML = b.trades.length ? `<table class="tbl"><tbody>${b.trades.slice(0, 12).map((x) => `<tr><td class="l dim">${x.d.slice(5)} ${x.t}</td><td class="l ${x.side === 'BUY' ? 'up' : 'down'}">${x.side}</td><td class="r">${x.qty.toLocaleString('en-US')}</td><td class="l">${esc(x.sym)}</td><td class="r">${num(x.p, 2)}</td></tr>`).join('')}</tbody></table>` : `<p class="note">No trades yet. Type <kbd>BUY ${esc(E.defaults.sec)} 100</kbd> in the command line.</p>`;
+      bl.innerHTML = b.trades.length ? `<table class="tbl"><tbody>${b.trades.slice(0, 12).map((x) => `<tr><td class="l dim">${x.d.slice(5)} ${x.t}</td><td class="l ${['BUY', 'COVER'].includes(x.side) ? 'up' : 'down'}">${x.side}</td><td class="r">${x.qty.toLocaleString('en-US')}</td><td class="l">${esc(x.sym)}</td><td class="r">${num(x.p, 2)}</td></tr>`).join('')}</tbody></table>` : `<p class="note">No trades yet. Type <kbd>BUY ${esc(E.defaults.sec)} 100</kbd> in the command line.</p>`;
     };
     update();
     return { update };

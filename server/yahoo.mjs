@@ -329,6 +329,9 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
           period: t.period, end: t.endDate, growth: raw(t.growth),
           eps: { avg: raw(t.earningsEstimate?.avg), low: raw(t.earningsEstimate?.low), high: raw(t.earningsEstimate?.high), analysts: raw(t.earningsEstimate?.numberOfAnalysts), yearAgo: raw(t.earningsEstimate?.yearAgoEps) },
           revenue: { avg: raw(t.revenueEstimate?.avg), low: raw(t.revenueEstimate?.low), high: raw(t.revenueEstimate?.high), analysts: raw(t.revenueEstimate?.numberOfAnalysts), yearAgo: raw(t.revenueEstimate?.yearAgoRevenue) },
+          // how the average EPS estimate moved, and how many analysts raised or cut it (REV)
+          trend: { now: raw(t.epsTrend?.current), d7: raw(t.epsTrend?.['7daysAgo']), d30: raw(t.epsTrend?.['30daysAgo']), d60: raw(t.epsTrend?.['60daysAgo']), d90: raw(t.epsTrend?.['90daysAgo']) },
+          revisions: { up7: raw(t.epsRevisions?.upLast7days), up30: raw(t.epsRevisions?.upLast30days), down7: raw(t.epsRevisions?.downLast7days), down30: raw(t.epsRevisions?.downLast30days), down90: raw(t.epsRevisions?.downLast90days) },
         })),
         ownership: { insiders: raw(mh.insidersPercentHeld), institutions: raw(mh.institutionsPercentHeld), institutionsFloat: raw(mh.institutionsFloatPercentHeld), institutionCount: raw(mh.institutionsCount) },
         institutions: holders(r.institutionOwnership?.ownershipList),

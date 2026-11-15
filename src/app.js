@@ -29,6 +29,10 @@ import './functions/insider.js';
 import './functions/alloc.js';
 import './functions/gaps.js';
 import './functions/ships.js';
+import './functions/preview.js';
+import './functions/prisk.js';
+import './functions/divcal.js';
+import './functions/macro.js';
 import { GLOSSARY } from './glossary.js';
 
 const PANEL_DEFAULTS = [

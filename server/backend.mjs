@@ -370,6 +370,8 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
         }
       }
     },
+    // Dates of the company's earnings releases (SEC 8-K item 2.02), for the earnings preview.
+    '/api/earnings-dates': async (q) => sec.earningsDates(needSym(q)),
     // Quotes for the 1,000+ extra companies (src/companies.js), for the screener: one Yahoo
     // request per 50 companies, at most once a minute, and only the fields the screener uses.
     '/api/more-quotes': async () => moreQuotes(),

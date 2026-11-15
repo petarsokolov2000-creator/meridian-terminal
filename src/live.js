@@ -593,6 +593,9 @@ export class LiveEngine {
   events(sym) {
     return api(`/api/events?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
+  reportDates(sym) {
+    return api(`/api/earnings-dates?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
   filings(sym) {
     return api(`/api/filings?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }

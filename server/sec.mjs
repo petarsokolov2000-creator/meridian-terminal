@@ -80,6 +80,28 @@ export function createSec({ fetchImpl = fetch, getContact = () => null } = {}) {
     });
   }
 
+  // The dates the company published quarterly results: its 8-K filings that carry item 2.02
+  // ("Results of Operations"). The 8-K is filed the day of the release (or a day later), so this is the
+  // closest thing to a report date the SEC gives. Newest first, at most 24.
+  async function earningsDates(symbol) {
+    const t = String(symbol).toUpperCase();
+    const hit = (await tickers()).get(t) || (await tickers()).get(t.replace('.', '-'));
+    if (!hit) throw Object.assign(new Error(`${t} isn't in the SEC's list of US filers (non-US companies usually file elsewhere)`), { status: 404 });
+    return cached(`edates:${hit.cik}`, 6 * 60 * 60e3, async () => {
+      const data = await json(`https://data.sec.gov/submissions/CIK${String(hit.cik).padStart(10, '0')}.json`);
+      const r = data?.filings?.recent || {};
+      const dates = [];
+      for (let i = 0; i < (r.form || []).length; i++) {
+        if (!/^8-K/.test(r.form[i] || '')) continue;
+        if (!String(r.items?.[i] || '').split(',').map((x) => x.trim()).includes('2.02')) continue;
+        const d = r.filingDate?.[i];
+        if (d && !dates.includes(d)) dates.push(d);
+      }
+      dates.sort().reverse();
+      return { cik: hit.cik, source: 'SEC EDGAR (8-K item 2.02)', dates: dates.slice(0, 24), covers: (r.filingDate || []).slice(-1)[0] || null };
+    });
+  }
+
   // ---- for the valuation functions ----------------------------------------------------------
 
   async function cikOf(symbol) {
@@ -142,5 +164,5 @@ export function createSec({ fetchImpl = fetch, getContact = () => null } = {}) {
     },
   };
 
-  return { filings, cikOf, profile, concept, latest10K, documentText, probe };
+  return { filings, earningsDates, cikOf, profile, concept, latest10K, documentText, probe };
 }

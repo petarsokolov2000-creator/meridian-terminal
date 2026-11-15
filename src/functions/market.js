@@ -8,6 +8,8 @@ import { SECTORS, TENORS } from '../universe.js';
 import { fmtVal } from '../news.js';
 import { peek, isStock, marginOfSafety } from '../intrinsic.js';
 import { getNote, noteStats } from '../notes-data.js';
+import { peekSignals } from '../watch-signals.js';
+import { LEVEL_WORD, LEVEL_CLS } from '../insider-data.js';
 
 const quoteCols = (E, extra = []) => [
   { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
@@ -55,6 +57,9 @@ register({
     // intrinsic value: a stock's cell fills in once its filings have loaded (two at a time)
     let redraw = () => {};
     const intr = (i) => (isStock(E, i) ? peek(E, i.sym, () => redraw()) : undefined);
+    // insider trades and short interest: filled in as each stock's company details arrive (two at a time)
+    const sigs = (i) => peekSignals(E, i, () => redraw());
+    const usdK = (v) => `${v < 0 ? '−' : '+'}$${big(Math.abs(v), 1)}`;
     const mon = quoteMonitor(ctx, () => list.map((s) => E.get(s)).filter(Boolean), {
       extra: [
         {
@@ -84,6 +89,32 @@ register({
             if (!n) return '<span class="dim">—</span>';
             const st = noteStats(n, i.last);
             return `<span class="${n.side === 'SHORT' ? 'down' : n.side === 'LONG' ? 'up' : 'dim'}">${n.side[0]}</span>${st.pnl == null ? '' : ` ${Math.round(st.pnl * 1000) > 0 ? '+' : ''}${num(Math.round(st.pnl * 1000) / 10, 1)}%`}${st.stopHit ? ' <span class="tag down">STOP</span>' : st.targetReached ? ' <span class="tag up">TARGET</span>' : ''}`;
+          },
+        },
+        {
+          label: 'Insiders', title: "What the company's own officers and directors did with their own money in the last 180 days (open-market buys and sales of $10,000 or more). Buying is the signal that matters; selling is often routine. A hint for more research, not a buy signal. Open INSIDER for the detail, or INSIDER WATCH to rank this list.",
+          cls: 'l',
+          value: (i) => {
+            const r = sigs(i);
+            if (r === undefined) return '<span class="dim">—</span>';
+            if (r === null) return '<span class="dim" title="loading from Yahoo Finance">…</span>';
+            if (r.error) return `<span class="dim" title="${esc(r.error)}">n/a</span>`;
+            if (!r.trades) return '<span class="dim" title="Yahoo lists no insider filings for this company">none listed</span>';
+            const w = r.sig.w;
+            return `<span class="${r.sig.cls}" title="${esc(r.sig.why)}">${esc(r.sig.word)}</span>${w.buy.n || w.sell.n ? ` <span class="dim small">${usdK(w.net)}</span>` : ''}`;
+          },
+        },
+        {
+          label: 'Short %', title: 'Shares sold short as a share of the float (the shares that trade freely), from the latest exchange report (twice a month). 10% or more is high, 20% or more very high. The arrow compares with the report before. High short interest means many investors bet on a fall; it can also fuel a squeeze. Open SI for the detail, or SI WATCH to rank this list.',
+          cls: 'r',
+          value: (i) => {
+            const r = sigs(i);
+            if (r === undefined) return '<span class="dim">—</span>';
+            if (r === null) return '<span class="dim" title="loading from Yahoo Finance">…</span>';
+            const st = r.short;
+            if (!st || st.pf == null) return `<span class="dim" title="${r.error ? esc(r.error) : 'no short interest reported for this stock'}">n/a</span>`;
+            const arrow = st.change == null ? '' : st.change > 0.1 ? ' <span class="down" title="up more than 10% since the report before">▲</span>' : st.change < -0.1 ? ' <span class="up" title="down more than 10% since the report before">▼</span>' : '';
+            return `<span class="${LEVEL_CLS[st.level] || ''}" title="${esc(`${LEVEL_WORD[st.level]} · days to cover ${st.dtc == null ? 'n/a' : num(st.dtc, 1)}`)}">${num(st.pf * 100, 1)}%</span>${arrow}`;
           },
         },
         ...hiLo,

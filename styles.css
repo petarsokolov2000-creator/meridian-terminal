@@ -593,3 +593,17 @@ a.doc:hover { text-decoration: underline; }
 .ships-tbl tbody tr { cursor: pointer; }
 .ships-tbl tbody tr:hover td { background: color-mix(in oklab, var(--accent) 10%, transparent); }
 @media (max-width: 640px) { .ships-card { margin: 4px 0; } }
+
+/* PRISK: weight versus risk bars */
+.pr-cell { min-width: 120px; line-height: 0; }
+.pr-bar { display: block; height: 5px; margin: 2px 0; border-radius: 1px; }
+.pr-bar.w { background: var(--dim); opacity: 0.55; }
+.pr-bar.r { background: var(--down); }
+.pr-key { display: inline-block; width: 10px; height: 5px; margin: 0 3px 1px 0; border-radius: 1px; }
+.pr-key.w { background: var(--dim); opacity: 0.55; }
+.pr-key.r { background: var(--down); }
+.note.warn { color: var(--warn, var(--accent)); }
+.dc-grid td, .dc-grid th { padding-left: 6px; padding-right: 6px; }
+.dc-grid .dc-tot td { border-top: 1px solid var(--line, #333); }
+.mc-curve { width: 100%; max-width: 420px; height: auto; display: block; }
+.mc-tbl .mc-read { white-space: normal; min-width: 260px; max-width: 520px; line-height: 1.35; }

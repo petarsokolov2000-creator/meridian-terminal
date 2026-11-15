@@ -457,12 +457,12 @@ async function sec(u) {
     const cik = Number(m[1]);
     const t = (await mockTickers()).find((x) => x.cik_str === cik);
     const real = t && REAL[t.ticker];
-    return ok({ name: t ? `${t.ticker} Mock Corp` : 'Unknown', sic: String(real?.sic ?? MOCK_SIC[t?.ticker] ?? 9999), sicDescription: real?.sicDescription ?? 'MOCK INDUSTRY', fiscalYearEnd: real?.fye ?? '1231', filings: { recent: { accessionNumber: [`000${cik}-25-000010`], filingDate: ['2025-02-14'], reportDate: ['2024-12-31'], form: ['10-K'], primaryDocument: [`${(t?.ticker || 'x').toLowerCase()}-20241231.htm`], primaryDocDescription: ['10-K'] } } });
+    return ok({ name: t ? `${t.ticker} Mock Corp` : 'Unknown', sic: String(real?.sic ?? MOCK_SIC[t?.ticker] ?? 9999), sicDescription: real?.sicDescription ?? 'MOCK INDUSTRY', fiscalYearEnd: real?.fye ?? '1231', filings: { recent: { accessionNumber: [`000${cik}-25-000010`, ...EDATES.map((_, k) => `000${cik}-25-0001${k}`)], filingDate: ['2025-02-14', ...EDATES], reportDate: ['2024-12-31', ...EDATES.map(() => '')], form: ['10-K', ...EDATES.map(() => '8-K')], items: ['', ...EDATES.map(() => '2.02,9.01')], primaryDocument: [`${(t?.ticker || 'x').toLowerCase()}-20241231.htm`, ...EDATES.map((_, k) => `ex${k}.htm`)], primaryDocDescription: ['10-K', ...EDATES.map(() => '8-K')] } } });
   }
   if (u.pathname === '/submissions/CIK0000320193.json') {
     return ok({ name: 'Apple Inc.', sic: '3571', sicDescription: 'ELECTRONIC COMPUTERS', fiscalYearEnd: '0928', filings: { recent: {
-      accessionNumber: ['0000320193-26-000105', '0000320193-26-000090', '0001140361-26-038000'], filingDate: ['2026-10-30', '2026-08-01', '2026-07-15'],
-      reportDate: ['2026-09-27', '2026-06-28', ''], form: ['10-K', '10-Q', '4'], primaryDocument: ['aapl-20260927.htm', 'aapl-20260628.htm', 'xslF345X05/form4.xml'], primaryDocDescription: ['10-K', '10-Q', 'FORM 4'],
+      accessionNumber: ['0000320193-26-000105', '0000320193-26-000090', '0001140361-26-038000', ...EDATES.map((_, k) => `0000320193-25-0002${k}`)], filingDate: ['2026-10-30', '2026-08-01', '2026-07-15', ...EDATES],
+      reportDate: ['2026-09-27', '2026-06-28', '', ...EDATES.map(() => '')], form: ['10-K', '10-Q', '4', ...EDATES.map(() => '8-K')], items: ['', '', '', ...EDATES.map(() => '2.02,9.01')], primaryDocument: ['aapl-20260927.htm', 'aapl-20260628.htm', 'xslF345X05/form4.xml', ...EDATES.map((_, k) => `ex${k}.htm`)], primaryDocDescription: ['10-K', '10-Q', 'FORM 4', ...EDATES.map(() => '8-K')],
     } } });
   }
   return new Response('{}', { status: 404 });
@@ -473,6 +473,9 @@ function news(q, wantQuotes) {
   const quotes = wantQuotes ? [{ symbol: q.toUpperCase(), shortname: `${q.toUpperCase()} Mock Inc`, quoteType: 'EQUITY', exchDisp: 'NASDAQ' }, { symbol: `${q.toUpperCase()}.TO`, shortname: `${q.toUpperCase()} Mock Canada`, quoteType: 'EQUITY', exchDisp: 'Toronto' }] : [];
   return { quotes, news: Array.from({ length: 8 }, (_, i) => ({ uuid: `${q}-${i}`, title: `Mock headline ${i + 1} about ${q}`, publisher: 'Mock Wire', link: 'https://example.com/story', providerPublishTime: now - i * 1800, relatedTickers: [q] })) };
 }
+
+// Quarterly results releases (8-K item 2.02) going back about two and a half years, newest first
+const EDATES = Array.from({ length: 10 }, (_, k) => new Date(Date.now() - (20 + 91 * k) * 86400e3).toISOString().slice(0, 10));
 
 // ---- official rates (Treasury CSV, ECB CSV, Frankfurter) and FRED ----------------------------
 

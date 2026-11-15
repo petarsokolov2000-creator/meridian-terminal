@@ -194,12 +194,12 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 
 | Area | Codes |
 | --- | --- |
-| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` `SHIPS` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `DVD` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
+| Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` `SHIPS` `MACRO` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `PREVIEW` `DVD` `DIVCAL` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
 | News | `NEWS` `CN` `FILE` |
-| Analytics | `OPT` `OVME` `BETA` `VOLA` `CORR` `SCAT` `DCF` `BT` |
+| Analytics | `OPT` `OVME` `BETA` `VOLA` `CORR` `SCAT` `DCF` `BT` `PRISK` |
 | Trading | `PORT` `MARS` `ALRT` `BOOK` `TAPE` |
 | System | `HELP` `GAPS` |
 
@@ -237,6 +237,11 @@ New in this release, in plain words:
 - `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
   slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
   debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year, the **12 months** just reported (latest annual report + the quarters since, from the SEC's 10-Q filings, or Yahoo's trailing figures; a use for which no source has a 12-month figure counts as 0 and is listed) or the 5-year sum.
+- `PREVIEW` (also `EARNPREV`, `EPV`, `ERNP`): earnings preview of one stock (`AAPL PREVIEW`): the next report date, expected EPS and revenue, how often it beat in the past, how far the share typically moves over a report (the 2-day move around the report date, measured from the company's SEC 8-K filings against the price history) and a plain-English reading. Limits: Yahoo supplies only about 4 quarters of EPS history, so the beat rate is of those 4; the report time (before open / after close) is unknown, so the move is an approximation; companies outside the SEC show no moves. A history, not a forecast.
+- `PRISK` (also `PORTRISK`, `PVAR`, `PRSK`): how risky the portfolio is. Volatility, "a bad day" (the 1-in-20 loss), the average of the worst days, which positions carry the risk (weight vs share of risk), which positions move together, sectors and market beta. It measures the **paper portfolio of `PORT`** (the practice book, not a brokerage account); test any mix with `PRISK AAPL:100 MSFT:50 JPM:-20` (a minus is a short). Based on the last year of daily prices: a calm year hides risk, and a real crash can be worse than any day in the window.
+- `DIVCAL` (also `DIVC`, `DIVINC`, `INCOME`): dividend calendar and income of the portfolio. A 12-month grid of the dividends expected (each regular payment of the last 12 months is assumed to come round again, at the latest amount) and the ones received in the last 12 months, income per year, yield and yield on cost, and a warning when a company **cut** its dividend, stopped paying, or one payer supplies half the income. Uses the paper portfolio of `PORT` or a typed basket (`DIVCAL KO:200 JNJ:50`). Months are ex-dividend months (the money arrives a few weeks later); one-off special dividends are left out of the estimate; nothing is a promise.
+- `MACRO` (also `ECONOMY`, `MAC`): the US economy on one screen: the yield curve (10-year minus 2-year, minus 3-month; inverted or not) and, with a free FRED key, the official indicators (inflation, jobs, growth, housing, rates), each with one plain sentence on what it usually means for stocks. The sentences are rules of thumb, not forecasts. The date of the next Fed meeting is not shown (FRED does not publish it).
+- `WATCH` now also has an **Insiders** column (signal and net dollars bought or sold by the company's own officers in the last 180 days) and a **Short %** column (short interest as a share of the float, with an arrow when it moved by more than 10%). They fill in as each stock's details load, two at a time; funds, indices, bonds and crypto show a dash. Hints for further research, not buy signals (`INSIDER WATCH` and `SI WATCH` rank a list).
 - `SHIPS` (also `VESSELS`, `AIS`, `MARITIME`, `SEA`): a world map of ships with each one's position and ID. Click or tap a ship (or a table row) for its card: name, MMSI (the radio ID every ship transmits), IMO (the hull's permanent number), type, speed, course, status, destination and when it was last heard. Search by name, MMSI or IMO; tap a type in the legend to hide it; scroll or pinch to zoom, drag to move. Needs `MODE LIVE`. See "Ships (SHIPS)" below for what it can and cannot show.
 - `SI`: short interest of one stock (`TSLA SI`): shares sold short, percent of the float, days to cover, change against the
   report a month earlier, a squeeze check (15%+ of the float and 4+ days to cover) and a history that builds up on your

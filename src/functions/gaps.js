@@ -69,11 +69,16 @@ register({
         const how = d.statsSrc || {};
         const why = d.statsWhy || {};
         parts.push(group('Key statistics (KEYS)', Object.keys(STAT_LABELS).map((f) => ({ label: STAT_LABELS[f], ok: fin(k[f]) || (typeof k[f] === 'string' && !!k[f]), how: how[f], why: why[f], optional: STAT_OPTIONAL.has(f) }))));
-        const area = (label, n, optional = false) => ({ label, ok: n > 0, why: d.partial ? "Yahoo's statistics page did not answer" : 'Yahoo has no data of this kind for this stock', optional });
+        const keyHint = /no Finnhub key/.test(d.altWhy?.finnhub || '');
+        const yWhy = d.partial ? "Yahoo's statistics page did not answer" : 'Yahoo has no data of this kind for this stock';
+        const fhWhy = (what) => `${yWhy}. ${keyHint ? `A free Finnhub key can fill ${what}: FINNHUB yourkey` : d.altWhy?.finnhub ? `Finnhub could not either (${d.altWhy.finnhub.replace(/^Finnhub:\s*/, '')})` : 'Finnhub has none either'}`;
+        const premium = `${yWhy}. Finnhub only has this on its paid plan`;
+        const area = (label, n, why, optional = false, how = '') => ({ label, ok: n > 0, how: n > 0 ? how : '', why, optional });
         parts.push(group('Analysts, ownership and insiders', [
-          area('Earnings history (EPS)', (d.earnings || []).length), area('Analyst estimates (EPS, ANLY)', (d.estimates || []).length),
-          area('Institutional holders (HOLD)', (d.institutions || []).length), area('Fund holders (HOLD)', (d.funds || []).length), area('Insider transactions (INSIDER)', (d.insiders || []).length, true),
-        ], 'These exist only at Yahoo; they cannot be rebuilt from other sources.'));
+          area('Earnings history (EPS)', (d.earnings || []).length, fhWhy('this'), false, d.altSrc?.earnings || ''), area('Analyst estimates (EPS, REV)', (d.estimates || []).length, premium),
+          area('Institutional holders (HOLD)', (d.institutions || []).length, premium), area('Fund holders (HOLD)', (d.funds || []).length, premium),
+          area('Insider transactions (INSIDER)', (d.insiders || []).length, fhWhy('this'), true, d.altSrc?.insiders || ''),
+        ], 'Yahoo is the main source. Finnhub (free key) can stand in for the earnings history and the insider trades, and for rating counts in ANLY; analyst estimates, price targets and holder lists exist only at Yahoo.'));
       } else fail.push(`Key statistics: ${dr.reason?.message || 'failed'}`);
       if (a) {
         const bank = !!a.financial;

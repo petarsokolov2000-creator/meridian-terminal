@@ -6,6 +6,7 @@
 // one stock, for your WATCH list, your PORT portfolio, or the whole MARKET list of Meridian.
 // Neither is a trading signal on its own: see the notes on each screen.
 
+import { altNote } from '../sources.js';
 import { register } from '../registry.js';
 import { num, big, esc, el, secLink, store, save } from '../fmt.js';
 import { normalize, windowStats, signal, monthly, coverage, shortStats, addSnapshot, LEVEL_WORD, LEVEL_CLS, COVER_WORD, MIN_TRADE } from '../insider-data.js';
@@ -130,6 +131,7 @@ function insiderOne(ctx) {
           ${shown.map((t) => { const [word, cls] = KIND[t.kind]; const since = t.kind === 'BUY' && t.price ? px / t.price - 1 : null; return `<tr class="${t.small ? 'dim' : ''}"><td class="l dim">${day(t.date)}</td><td class="l">${esc(t.name)}</td><td class="l dim" title="${esc(t.relation)}">${esc(t.role)}</td><td class="l ${cls}" title="${esc(t.text)}">${word}${t.small ? ` <span class="small" title="Under $${MIN_TRADE.toLocaleString('en-US')}: shown, but left out of the totals">(small)</span>` : ''}</td><td class="r">${t.shares == null ? '—' : big(t.shares)}</td><td class="r">${t.price ? num(t.price, 2) : '—'}</td><td class="r">${t.value ? usd(t.value) : '—'}</td><td class="r ${since == null ? 'dim' : since >= 0 ? 'up' : 'down'}">${since == null ? '' : pctTxt(since)}</td></tr>`; }).join('')}
           </tbody></table></div>` : `<p class="note">${rows.length ? 'No open-market purchases or sales listed (tick the box to see awards and exercises).' : 'Yahoo lists no insider filings for this company. Non-US companies, for instance, don\'t file Form 4.'}</p>`}
         </div>
+        ${altNote(d, 'insiders', 'The insider trades', !rows.length)}
         <p class="note">${cov ? `Yahoo lists ${cov.n} filings from ${day(cov.from)} to ${day(cov.to)}; the totals only count what is listed. ` : ''}Only <b>open-market purchases and sales</b> count: grants, option exercises, tax withholding and gifts don't say what an insider thinks of the price, and trades under $${MIN_TRADE.toLocaleString('en-US')} are shown but left out of the totals.</p>
         <p class="note"><b>How to read it:</b> buying is the stronger signal, because insiders sell for many reasons (taxes, a house, diversifying, a pre-arranged plan) but buy for one. <b>Cluster buying</b> = three or more different insiders buying within 30 days; <b>Executive buying</b> = an officer (not just a director) bought and bought more than was sold. Studies have mostly found modest outperformance after insider buying, especially in smaller companies and clusters, but it is no guarantee for any single stock, and the information is already public. Figures are in USD. Pre-arranged (10b5-1) sales aren't marked by Yahoo. Original forms: <kbd>${esc(s.sym)} FILE</kbd>. Your whole list: <kbd>INSIDER WATCH</kbd>, <kbd>INSIDER PORT</kbd>, <kbd>INSIDER MARKET</kbd>.</p>`;
     };

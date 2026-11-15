@@ -204,3 +204,14 @@ export function srcNote(y, fields, prev = null, prevFields = []) {
   const mixed = new Set(all).size > 1;
   return `<br><span class="dim small">${mixed ? '<b>Mixes sources.</b> ' : ''}${[...cur.map((f) => describe(y, f)), ...pre.map((f) => `FY${prev.fy} ${describe(prev, f)}`)].map(esc).join('<br>')}</span>`;
 }
+
+/**
+ * A one-line note when a list (earnings history, insider trades, rating counts) was filled from Finnhub, or
+ * why Finnhub could not fill it. `d` is the details/profile answer; `kind` the key in d.altSrc.
+ */
+export function altNote(d, kind, label, empty) {
+  if (d?.altSrc?.[kind]) return `<p class="note">${esc(label)} come from Finnhub, because Yahoo had none just now. Finnhub's free plan covers only part of what Yahoo has.</p>`;
+  const w = typeof d?.altWhy === 'string' ? d.altWhy : d?.altWhy?.finnhub;
+  if (empty && w) return `<p class="note">Finnhub could not fill this in either: ${esc(w)}.</p>`;
+  return '';
+}

@@ -553,6 +553,27 @@ function finnhub(u) {
     ] });
   }
   if (p === '/stock/financials-reported') return ok({ symbol: u.searchParams.get('symbol'), data: u.searchParams.get('symbol') === 'AAPL' && u.searchParams.get('freq') === 'annual' ? finnhubAapl() : [] });
+  const sym = u.searchParams.get('symbol') || '';
+  // free-plan company data in Finnhub's documented shapes (percent values, volumes in millions, YYYY-MM-DD periods)
+  if (p === '/stock/metric') return ok({ symbol: sym, metricType: 'all', metric: {
+    '52WeekHigh': 260.1, '52WeekLow': 164.1, beta: 1.21, '10DayAverageTradingVolume': 48.2, '3MonthAverageTradingVolume': 55.4, marketCapitalization: 3480000, enterpriseValue: 3520000,
+    peTTM: 36.2, pbQuarterly: 52.1, psTTM: 8.9, grossMarginTTM: 46.2, operatingMarginTTM: 31.5, netProfitMarginTTM: 26.4, roeTTM: 150.8, roaTTM: 22.6, currentRatioQuarterly: 0.87, quickRatioQuarterly: 0.83,
+    epsTTM: 6.31, bookValuePerShareQuarterly: 4.38, 'totalDebt/totalEquityQuarterly': 1.67, dividendPerShareAnnual: 1.0, dividendYieldIndicatedAnnual: 0.44, payoutRatioTTM: 15.8,
+    revenueGrowthTTMYoy: 5.1, epsGrowthTTMYoy: 9.4, '52WeekPriceReturnDaily': 18.7 }, series: {} });
+  if (p === '/stock/recommendation') return ok([
+    { buy: 22, hold: 15, period: '2026-11-01', sell: 2, strongBuy: 12, strongSell: 1, symbol: sym },
+    { buy: 21, hold: 16, period: '2026-10-01', sell: 2, strongBuy: 11, strongSell: 1, symbol: sym }]);
+  if (p === '/stock/earnings') return ok([
+    { actual: 1.65, estimate: 1.6, period: '2026-09-30', quarter: 3, surprise: 0.05, surprisePercent: 3.125, symbol: sym, year: 2026 },
+    { actual: 1.4, estimate: 1.43, period: '2026-06-30', quarter: 2, surprise: -0.03, surprisePercent: -2.0979, symbol: sym, year: 2026 },
+    { actual: 2.4, estimate: 2.31, period: '2026-03-31', quarter: 1, surprise: 0.09, surprisePercent: 3.8961, symbol: sym, year: 2026 },
+    { actual: 1.64, estimate: 1.6, period: '2025-12-31', quarter: 4, surprise: 0.04, surprisePercent: 2.5, symbol: sym, year: 2025 }]);
+  if (p === '/stock/insider-transactions') return ok({ symbol: sym, data: [
+    { name: 'Mock CEO', share: 3280000, change: -45000, filingDate: '2026-11-05', transactionDate: '2026-11-03', transactionCode: 'S', transactionPrice: 228.4 },
+    { name: 'Mock Director', share: 51000, change: 2000, filingDate: '2026-10-20', transactionDate: '2026-10-17', transactionCode: 'P', transactionPrice: 219.8 },
+    { name: 'Mock CFO', share: 120000, change: 18000, filingDate: '2026-10-02', transactionDate: '2026-10-01', transactionCode: 'A', transactionPrice: 0 },
+    { name: 'Mock COO', share: 90000, change: -9000, filingDate: '2026-10-02', transactionDate: '2026-10-01', transactionCode: 'F', transactionPrice: 225.0 }] });
+  if (p === '/stock/profile2') return ok({ country: 'US', currency: 'USD', exchange: 'NASDAQ NMS - GLOBAL MARKET', finnhubIndustry: 'Technology', ipo: '1980-12-12', marketCapitalization: 3480000, name: 'Mock Company Inc', shareOutstanding: 15200, ticker: sym, weburl: 'https://example.com/' });
   if (p === '/calendar/economic') return new Response('{"error":"You don\'t have access to this resource."}', { status: 403 });
   return new Response('not found', { status: 404 });
 }

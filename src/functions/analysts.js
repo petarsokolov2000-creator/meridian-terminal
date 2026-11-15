@@ -16,6 +16,7 @@ import { num, big, pct, esc, el, secLink, store } from '../fmt.js';
 import { help } from '../glossary.js';
 import { qualityRows } from './quality.js';
 import { loadBook } from './tools.js';
+import { profNote } from './live-fns.js';
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const NA = '<span class="dim">n/a</span>';
@@ -90,6 +91,7 @@ register({
           ${bar ? `<div class="pane"><h3>Ratings now (${nTr} analysts)</h3><table class="tbl compact"><tbody>${bar.map(([l, n, c]) => `<tr><td class="l">${l}</td><td class="r ${c}">${n}</td><td class="l"><span class="bar ${c === 'dim' ? 'flat' : c}" style="display:inline-block;height:8px;width:${(n / nTr) * 100}%;min-width:${n ? 2 : 0}px"></span></td></tr>`).join('')}</tbody></table></div>` : ''}
           <div class="pane"><h3>Latest rating changes</h3>${prof?.actions?.length ? `<table class="tbl compact"><tbody>${prof.actions.slice(0, 12).map((a) => { const act = String(a.action || '').toLowerCase(); const c = /up/.test(act) ? 'up' : /down/.test(act) ? 'down' : 'dim'; return `<tr><td class="l dim">${new Date(a.t).toISOString().slice(0, 10)}</td><td class="l">${esc(a.firm || '')}</td><td class="l ${c}">${esc(a.from ? `${a.from} → ${a.to}` : a.to || '')}</td><td class="l dim small">${esc(act === 'up' ? 'upgrade' : act === 'down' ? 'downgrade' : act === 'main' ? 'maintains' : act === 'init' ? 'initiates' : act === 'reit' ? 'reiterates' : act)}${a.target > 0 ? ` · target ${num(a.target, 0)}` : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p class="note">No recent rating changes listed.</p>'}</div>
         </div>
+        ${profNote(prof)}
         <p class="note">"Estimates are <b>Rising</b>" = the average current-year EPS estimate is more than 1% above its level 30 days ago and at least as many analysts raised as cut; <b>Falling</b> is the mirror image. Rising estimates tend to go with rising prices, but a lot is already in the price: it's one input, not a signal to trade. Figures come from Yahoo Finance's consensus of the analysts it tracks (not every analyst), so individual analysts' estimates aren't available. Price targets are opinions that often lag the price. Open <kbd>${esc(s.sym)} ANLY</kbd> for the recommendation view, <kbd>${esc(s.sym)} EPS</kbd> for earnings history, <kbd>REV WATCH</kbd> for your whole list.</p>`;
     });
     return { destroy: () => { gone = true; } };

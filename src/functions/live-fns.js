@@ -62,6 +62,13 @@ live('DESC', (ctx) => {
   });
 });
 
+/** Where the analyst figures came from when Yahoo could not supply all of them (Finnhub's free plan: rating counts only). */
+export function profNote(p) {
+  if (p?.altSrc?.trend) return `<p class="note">The rating counts come from Finnhub${p.altWhy ? `. ${esc(p.altWhy)}` : ', because Yahoo had none just now. Finnhub\'s free plan has no price targets or rating changes, so those stay empty'}.</p>`;
+  if (typeof p?.altWhy === 'string' && p.altWhy) return `<p class="note">${esc(p.altWhy)}.</p>`;
+  return '';
+}
+
 live('ANLY', (ctx) => {
   if (ctx.sec.cls !== 'EQ') return notEquity(ctx, 'Analyst coverage');
   const s = ctx.sec;
@@ -80,11 +87,12 @@ live('ANLY', (ctx) => {
         <div><span class="dim">12M target (mean)</span><b class="big ${dir((mean ?? s.last) - s.last)}">${tgt(mean)}</b><span class="${dir((mean ?? s.last) - s.last)}">${mean ? `${pct(mean / s.last - 1, 1)} vs last` : ''}</span></div>
         <div><span class="dim">Range</span><b>${tgt(p.targetLow)} – ${tgt(p.targetHigh)}</b></div></div>
       ${total ? `<div class="stack"><span class="up-bg" style="width:${w(buy)}%">Buy ${buy}</span><span class="mid-bg" style="width:${w(t.hold)}%">Hold ${t.hold}</span><span class="down-bg" style="width:${w(sell)}%">Sell ${sell}</span></div>` : ''}
+      ${profNote(p)}
       <h3 class="dim" style="font-size:11px;margin:8px 0 4px">RECENT RATING CHANGES</h3>
       ${p.actions.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Firm</th><th class="l">Action</th><th class="l">Rating</th><th class="r">Target</th></tr></thead><tbody>
       ${p.actions.map((a) => `<tr><td class="l dim">${new Date(a.t).toISOString().slice(0, 10)}</td><td class="l">${esc(a.firm)}</td><td class="l ${a.action === 'up' ? 'up' : a.action === 'down' ? 'down' : ''}">${esc(a.action || '')}</td><td class="l">${esc(a.from ? `${a.from} → ${a.to}` : a.to)}</td><td class="r" ${a.target > 0 ? '' : 'title="This firm published no price target with this rating change"'}>${tgt(a.target)}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="note">No recent rating changes reported.</p>'}
-      <p class="note">Source: Yahoo Finance (financialData, recommendationTrend, upgradeDowngradeHistory), as of ${new Date().toISOString().slice(0, 10)}. Targets are 12-month analyst price targets; "n/a" means the firm gave no target with that rating change (Yahoo reports those as 0).</p></div>`;
+      <p class="note">Source: ${p.altSrc?.trend ? 'Finnhub (recommendation counts; Yahoo did not answer)' : 'Yahoo Finance (financialData, recommendationTrend, upgradeDowngradeHistory)'}, as of ${new Date().toISOString().slice(0, 10)}. Targets are 12-month analyst price targets; "n/a" means the firm gave no target with that rating change (Yahoo reports those as 0).</p></div>`;
   });
 });
 

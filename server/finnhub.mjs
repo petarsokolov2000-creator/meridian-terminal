@@ -80,12 +80,25 @@ export function createFinnhub({ getKey, fetchImpl = fetch, WebSocketImpl = globa
     // per 10-K or 10-Q with its XBRL concepts: Meridian's third source for annual figures.
     reported: (symbol, freq = 'annual') => cached(`rep:${symbol}:${freq}`, 12 * 60 * 60e3, async () => (await rest('/stock/financials-reported', { symbol, freq })).data || []),
     configured: () => !!getKey(),
+
+    // Free-plan company data that fills what Yahoo leaves empty (see finnhub-data.mjs). Cached for hours:
+    // the free key allows 60 calls a minute and none of this changes within a session.
+    metric: (symbol) => cached(`metric:${symbol}`, 6 * 60 * 60e3, async () => (await rest('/stock/metric', { symbol, metric: 'all' })).metric || {}),
+    recommendation: (symbol) => cached(`rec:${symbol}`, 6 * 60 * 60e3, async () => await rest('/stock/recommendation', { symbol })),
+    earningsHistory: (symbol) => cached(`eh:${symbol}`, 12 * 60 * 60e3, async () => await rest('/stock/earnings', { symbol, limit: 12 })),
+    insiders: (symbol) => cached(`ins:${symbol}`, 6 * 60 * 60e3, async () => await rest('/stock/insider-transactions', { symbol })),
+    profile: (symbol) => cached(`prof:${symbol}`, 24 * 60 * 60e3, async () => await rest('/stock/profile2', { symbol })),
     // STATUS: fresh (never cached) requests, so a plan that lacks a data set shows its real answer
     probe: {
       async quote() {
         const q = await rest('/quote', { symbol: 'AAPL' });
         if (!Number.isFinite(q?.c)) throw Object.assign(new FinnhubError('Finnhub answered without a price', 502), { http: 'empty' });
         return `AAPL last price ${q.c.toFixed(2)}`;
+      },
+      async company() {
+        const m = (await rest('/stock/metric', { symbol: 'AAPL', metric: 'all' })).metric || {};
+        if (!Object.keys(m).length) throw Object.assign(new FinnhubError('Finnhub answered, but with no company metrics', 502), { http: 'empty' });
+        return `${Object.keys(m).length} metrics for AAPL`;
       },
       async reported() {
         const n = ((await rest('/stock/financials-reported', { symbol: 'AAPL', freq: 'annual' })).data || []).length;

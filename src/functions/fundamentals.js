@@ -8,7 +8,7 @@ import { num, big, pct, signed, dir, esc, el } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { deferred, strip, kv } from './live-fns.js';
 import { help } from '../glossary.js';
-import { na, filled } from '../sources.js';
+import { na, filled, altNote } from '../sources.js';
 
 const needsReal = (what) => (ctx) => {
   ctx.el.innerHTML = `<div class="empty">${esc(what)} needs real company data. Switch with <kbd>MODE LIVE</kbd> (Meridian has to be running from its icon).</div>`;
@@ -116,6 +116,8 @@ register({
         ${est.map((t) => `<tr><td class="l">${names[t.period]}${t.end ? ` <span class="dim">${esc(t.end)}</span>` : ''}</td><td class="r">${num(t.eps.avg, 2)}</td><td class="r dim">${num(t.eps.low, 2)}–${num(t.eps.high, 2)}</td><td class="r dim">${num(t.eps.yearAgo, 2)}</td><td class="r ${dir(t.growth)}">${t.growth == null ? '—' : pct(t.growth, 1)}</td><td class="r">${big(t.revenue.avg)}</td><td class="r dim">${num(t.eps.analysts, 0)}</td></tr>`).join('')}
         </tbody></table></div>${s.earnings?.date ? `<p class="note">Next report: <b>${esc(s.earnings.date)}</b> ${esc(s.earnings.when || '')}</p>` : ''}<p class="note">Source: Yahoo Finance.</p></div>`;
       ctx.el.appendChild(top);
+      const altE = altNote(d, 'earnings', 'The earnings history figures', !hist.length);
+      if (altE) ctx.el.insertAdjacentHTML('beforeend', altE);
       let chart = null;
       if (hist.length) {
         chart = new XYChart(top.querySelector('.eps-chart'));
@@ -143,10 +145,10 @@ register({
       const o = d.ownership;
       const holders = (list) => (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Holder</th><th class="r">% held</th><th class="r">Shares</th><th class="r">Value</th><th class="r">As of</th></tr></thead><tbody>
         ${list.map((h) => `<tr><td class="l name" title="${esc(h.name)}">${esc(h.name)}</td><td class="r">${pc(h.pct, 2)}</td><td class="r">${big(h.shares)}</td><td class="r">${big(h.value)}</td><td class="r dim">${date(h.date)}</td></tr>`).join('')}
-        </tbody></table></div>` : '<p class="note">None reported.</p>');
+        </tbody></table></div>` : `<p class="note">None reported${d.partial ? " (Yahoo did not answer, and Finnhub's free plan has no holder lists)" : ''}.</p>`);
       ctx.el.innerHTML = `<div class="port-head">${[['Insiders', pc(o.insiders)], ['Institutions', pc(o.institutions)], ['Institutions (of float)', pc(o.institutionsFloat)], ['Institutional holders', num(o.institutionCount, 0)]].map(([k, v]) => `<div><span class="dim">${k}</span><b>${v}</b></div>`).join('')}</div>
         <div class="split2"><div class="pane"><h3>Top institutions</h3>${holders(d.institutions)}</div><div class="pane"><h3>Top funds</h3>${holders(d.funds)}</div></div>
-        <div class="pane"><h3>Insider transactions</h3>${d.insiders.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Insider</th><th class="l">Role</th><th class="l">Transaction</th><th class="r">Shares</th><th class="r">Value</th></tr></thead><tbody>
+        <div class="pane"><h3>Insider transactions</h3>${altNote(d, 'insiders', 'These insider trades', false)}${d.insiders.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Insider</th><th class="l">Role</th><th class="l">Transaction</th><th class="r">Shares</th><th class="r">Value</th></tr></thead><tbody>
         ${d.insiders.slice(0, 40).map((t) => {
           const kind = /sale|sold/i.test(t.text || '') ? 'down' : /purchase|buy|bought/i.test(t.text || '') ? 'up' : '';
           return `<tr><td class="l dim">${date(t.date)}</td><td class="l">${esc(t.name)}</td><td class="l dim">${esc(t.relation || '')}</td><td class="l ${kind}">${esc(t.text || 'Award / exercise')}</td><td class="r">${big(t.shares)}</td><td class="r">${t.value ? big(t.value) : '—'}</td></tr>`;

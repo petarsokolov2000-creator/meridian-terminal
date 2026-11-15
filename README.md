@@ -86,6 +86,14 @@ A free [Finnhub](https://finnhub.io) key adds **real-time trades** for US stocks
 (prices tick live, and `TAPE` shows actual trades with sizes), **news with summaries**, and an
 **earnings calendar with EPS/revenue estimates and actuals** (`EARN`).
 
+**What the free Finnhub key adds when Yahoo is throttled or has gaps** (it is only asked for what is still empty, and
+results are kept for hours so the 60 calls a minute limit is not touched): the earnings history (`EPS`), insider trades
+(`INSIDER`, `HOLD`; Finnhub gives no job titles, so roles show as "—"), analyst rating counts and industry (`ANLY`, `REV`),
+and ready-made key statistics (`KEYS`: margins, returns, ratios, 52-week range, beta, dividend) for what the price history
+and reported figures could not fill. A figure filled this way carries the marker "alt" and says "Finnhub metrics". Not on the
+free plan, so still empty with a reason: analyst estimates and price targets, rating changes, institution and fund holders.
+`GAPS` shows what each source filled.
+
 Add it once: start Meridian, then type **`FINNHUB yourkey`** in the command line. The server
 checks the key with Finnhub and saves it to `.finnhub-key` on this PC (git-ignored, never sent
 to the browser or kept in command history). `FINNHUB` shows the status; `FINNHUB OFF` removes
@@ -206,7 +214,8 @@ New in this release, in plain words:
   the company's reported figures (SEC, then Yahoo, then Finnhub): margins, returns, cash, debt, book value, free cash flow and
   the multiples. Such figures carry an `alt` marker (tap it for the source) and a figure that stays empty says why when you
   tap `n/a`. `FIN` (annual) falls back to the reported SEC/Finnhub figures when Yahoo's statements are throttled.
-  Analyst estimates, ratings, ownership and insider lists exist only at Yahoo and cannot be rebuilt.
+  With a free Finnhub key the remaining gaps shrink further (see "What the free Finnhub key adds" below).
+  Analyst estimates, price targets, rating changes and holder lists exist only at Yahoo (Finnhub charges for them).
 - `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
   slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
   debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year or sum the last 5.

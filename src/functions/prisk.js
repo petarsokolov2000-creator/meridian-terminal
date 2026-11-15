@@ -46,7 +46,7 @@ function holdings(E, args) {
 }
 
 register({
-  code: 'PRISK', aliases: ['PORTRISK', 'PVAR', 'PRSK'], name: 'Portfolio risk', cat: 'Analytics',
+  code: 'PRISK', aliases: ['PVAR', 'PRSK'], name: 'Portfolio risk', cat: 'Analytics',
   help: 'PRISK — volatility, size of a bad day, which positions carry the risk and which move together. PRISK AAPL:100 MSFT:50 tests any basket (minus = short)',
   run(ctx) {
     const E = ctx.engine;

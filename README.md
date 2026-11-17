@@ -269,7 +269,14 @@ notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side
 returns, debt, and an intrinsic value). Real company stocks also show an **intrinsic value** per share:
 in `WATCH` (columns Intrinsic and Safety), at the top of `DES`, and in `COMPARE`. It is the base case of the `DCF` screen
 (if you changed the assumptions there, yours are used); banks and insurers get the Graham number instead, because a
-DCF doesn't apply to them. It is an estimate from stated assumptions, not a fact. The main news lists and pop-ups no
+DCF doesn't apply to them. It is an estimate from stated assumptions, not a fact.
+**Foreign companies:** when a company reports in one currency and its share (or ADR) is quoted in another, `VAL`, `DCF`, the
+peer table and the intrinsic value convert the reported figures into the price currency (Yahoo's currency charts; the ECB
+rate of today if Yahoo has none) and say so on the screen, with the rate and its source. One rate (today's) is used for all
+years, so growth and margins are those of the original currency; the history of multiples uses each year-end's rate. Prices
+in pence or agorot are shown in pounds or shekels. Two limits: an ADR that stands for several ordinary shares is only
+*detected* (price × shares against Yahoo's market value) and flagged, not corrected, and the DCF discount rate still starts
+from the US 10-year yield, which fits non-dollar companies less well. The main news lists and pop-ups no
 longer fill up with crypto stories: those are under `NEWS` → Crypto. A price alert that is reached also shows a system notification: on the PC while the Meridian
 window is open, in the Android app also while it is closed (checked about every 15 minutes).
 Keys: `/` jumps to the command line, `Ctrl+1–9` focuses a panel (or opens that tab), `Tab` completes,

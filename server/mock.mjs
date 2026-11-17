@@ -2,7 +2,7 @@
 // `MERIDIAN_MOCK=1 node serve.mjs` and the tests, so the real-data path can be exercised
 // without network access. Prices are random walks, not real data.
 
-const BASE = { AAPL: 228, MSFT: 415, NVDA: 135, '^GSPC': 5800, '^VIX': 17, 'EURUSD=X': 1.08, 'BTC-USD': 68000, '^TNX': 4.28, '^IRX': 5.2, '^FVX': 4.1, '^TYX': 4.45, '2YY=F': 4.3, 'GC=F': 2650 };
+const BASE = { AAPL: 228, MSFT: 415, NVDA: 135, '^GSPC': 5800, '^VIX': 17, 'EURUSD=X': 1.08, 'GBPUSD=X': 1.27, 'BTC-USD': 68000, '^TNX': 4.28, '^IRX': 5.2, '^FVX': 4.1, '^TYX': 4.45, '2YY=F': 4.3, 'GC=F': 2650 };
 
 function seedOf(s) {
   let h = 2166136261;
@@ -18,6 +18,11 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+// a few mock symbols quoted in another currency than the (USD) statements, to exercise the currency conversion
+const CCY = { 'SAP.DE': 'EUR', 'ULVR.L': 'GBp' };
+// MERIDIAN_MOCK_CCY=AAPL:EUR quotes that symbol in another currency; MERIDIAN_MOCK_SHARES sets the share count of the quoted market value
+for (const kv of (process.env.MERIDIAN_MOCK_CCY || '').split(',').filter(Boolean)) CCY[kv.split(':')[0]] = kv.split(':')[1];
+const MOCK_SHARES = Number(process.env.MERIDIAN_MOCK_SHARES) || 2e9;
 const base = (s) => BASE[s] ?? 20 + (seedOf(s) % 400);
 
 // Insider trades and short interest that differ by symbol (the same shape Yahoo returns), so INSIDER
@@ -93,7 +98,7 @@ function chart(s, range, interval) {
       result: [{
         ...events,
         meta: {
-          symbol: s, currency: 'USD', longName: `${s} Mock Corp`, instrumentType: 'EQUITY', exchangeTimezoneName: 'America/New_York',
+          symbol: s, currency: CCY[s] || 'USD', longName: `${s} Mock Corp`, instrumentType: 'EQUITY', exchangeTimezoneName: 'America/New_York',
           regularMarketPrice: last, chartPreviousClose: last * 0.99, regularMarketDayHigh: last * 1.01, regularMarketDayLow: last * 0.98,
           regularMarketVolume: 12345678, fiftyTwoWeekHigh: last * 1.3, fiftyTwoWeekLow: last * 0.7, regularMarketTime: now,
           currentTradingPeriod: { regular: { start: now - 3600, end: now + 3600 } },
@@ -112,10 +117,10 @@ function quote(symbols) {
       result: symbols.map((s) => {
         const p = base(s) * (1 + (Math.random() - 0.5) * 0.002);
         return {
-          symbol: s, shortName: `${s} Mock`, longName: `${s} Mock Corp`, currency: 'USD', quoteType: 'EQUITY',
+          symbol: s, shortName: `${s} Mock`, longName: `${s} Mock Corp`, currency: CCY[s] || 'USD', quoteType: 'EQUITY',
           regularMarketPrice: p, regularMarketPreviousClose: base(s) * 0.99, regularMarketOpen: base(s) * 0.995,
           regularMarketDayHigh: p * 1.01, regularMarketDayLow: p * 0.98, regularMarketVolume: 9876543, averageDailyVolume3Month: 15000000,
-          bid: p - 0.01, ask: p + 0.01, bidSize: 3, askSize: 5, marketCap: p * 2e9, sharesOutstanding: 2e9, trailingPE: 25, epsTrailingTwelveMonths: p / 25,
+          bid: p - 0.01, ask: p + 0.01, bidSize: 3, askSize: 5, marketCap: p * MOCK_SHARES, sharesOutstanding: MOCK_SHARES, trailingPE: 25, epsTrailingTwelveMonths: p / 25,
           trailingAnnualDividendYield: 0.012, fiftyTwoWeekHigh: p * 1.3, fiftyTwoWeekLow: p * 0.7, earningsTimestamp: Math.floor(Date.now() / 1000) + 86400 * (seedOf(s) % 20),
           marketState: 'REGULAR', regularMarketTime: Math.floor(Date.now() / 1000),
         };
@@ -746,6 +751,8 @@ export async function mockFetch(url) {
   if (u.pathname === '/v1/test/getcrumb') return new Response('mockcrumb', { status: 200 });
   let m;
   if ((m = u.pathname.match(/^\/v8\/finance\/chart\/(.+)$/)) && decodeURIComponent(m[1]) === 'KRW=X' && u.searchParams.get('range') === '1d') return new Response('{}', { status: 500 });
+  // weekly charts of currency pairs the mock doesn't model: "not found", like Yahoo for a pair it doesn't list (the currency conversion then tries the inverse pair)
+  if ((m = u.pathname.match(/^\/v8\/finance\/chart\/(.+)$/)) && /=X$/.test(decodeURIComponent(m[1])) && u.searchParams.get('interval') === '1wk' && !(decodeURIComponent(m[1]) in BASE)) return new Response('{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}', { status: 404 });
   if ((m = u.pathname.match(/^\/v8\/finance\/chart\/(.+)$/))) return ok(chart(decodeURIComponent(m[1]), u.searchParams.get('range'), u.searchParams.get('interval')));
   if (u.pathname === '/v7/finance/quote') return ok(quote(u.searchParams.get('symbols').split(',').filter((x) => x !== 'KRW=X')));
   if ((m = u.pathname.match(/^\/v7\/finance\/options\/(.+)$/))) return ok(options(decodeURIComponent(m[1])));

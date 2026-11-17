@@ -22,6 +22,7 @@
 // exists, the latest fiscal year, labelled "FY".
 
 import { pool } from './yahoo.mjs';
+import { major, lookupFx, scaleYear, scaleNow, shareCheck } from './fx.mjs';
 
 const DAY = 86400e3;
 
@@ -65,6 +66,9 @@ const TAGS = [
 ];
 const VAL_FIELDS = new Set(TAGS.filter((t) => t[4] !== 'full').map((t) => t[0]));
 const UNIT_OF = Object.fromEntries(TAGS.map((t) => [t[0], t[2]]));
+// every figure that is an amount of money (per-share ones included), the others are counts and dates:
+// these are what a currency conversion multiplies
+const MONEY = new Set([...TAGS.filter((t) => t[2].startsWith('USD')).map((t) => t[0]), 'debt', 'cashAll', 'netDebt', 'ebit', 'ebitda', 'grossProfit', 'fcf', 'commonEquity', 'tangibleEquity']);
 
 // Plain names, for "n/a" reasons.
 export const LABEL = {
@@ -385,7 +389,7 @@ function secNow(raw, fyEnd, splits) {
   return { q, flow, b, bal, dei };
 }
 
-export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null, log = () => {} }) {
+export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, kvStore = null, log = () => {} }) {
   const cache = new Map();
   // ttl: milliseconds, or a function of the result (a result with a failed source: 60 s at most)
   const cached = (key, ttl, fn) => {
@@ -714,6 +718,32 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
     return best && t - best.ts < 21 * 86400 ? best.c : null;
   }
 
+  // ---- reporting currency vs price currency ---------------------------------------------------
+  // A foreign company's statements are in its own currency, its (ADR) price in another: convert the figures.
+  const fxPair = (from, to) => cached(`fx:${from}>${to}`, (r) => (r ? 6 * 60 * 60e3 : 60e3), () => lookupFx({ getChart: (s) => weekly(s), ecb: rates ? () => rates.fx() : null }, from, to));
+
+  /** How to put one company's figures and its price in the same currency. `error` when no rate could be loaded. */
+  async function fxPlan(a, w) {
+    const st = major(a.currency);
+    const px = major(w.meta?.currency);
+    const plan = { stCcy: st.ccy, pxCcy: px.ccy, stScale: st.scale, pxScale: px.scale, same: !st.ccy || !px.ccy || st.ccy === px.ccy, fx: null, error: null };
+    if (!plan.same) {
+      plan.fx = await fxPair(st.ccy, px.ccy);
+      if (!plan.fx) plan.error = `The financial statements are in ${a.currency} but the share price is in ${w.meta.currency}, and no exchange rate between them could be loaded (Yahoo Finance and the ECB were tried), so the multiples show n/a. Try again in a minute.`;
+    }
+    // factor for today's figures (one rate for all years), and for the figures of one fiscal year end
+    plan.spot = plan.error ? null : plan.stScale * (plan.same ? 1 : plan.fx.spot);
+    plan.at = (date) => {
+      if (plan.error) return null;
+      if (plan.same) return plan.stScale;
+      const r = plan.fx.at(date);
+      return r == null ? null : plan.stScale * r;
+    };
+    plan.price = (p) => (p == null ? null : p * plan.pxScale);
+    plan.changed = !plan.same || plan.pxScale !== 1 || plan.stScale !== 1;
+    return plan;
+  }
+
   // The multiples one fiscal year's figures give at a given price.
   function multiples(y, price, financial) {
     const shares = y.sharesOut ?? y.sharesDil;
@@ -805,16 +835,39 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
   /** Valuation now (today's price, trailing 12 months) vs the company's own 5y/10y history. */
   function valuation(symbol) {
     return cached(`val:${symbol}`, (r) => (r.partial ? 60e3 : 60 * 60e3), async () => {
-      const a = await annual(symbol, 'full');
+      const a0 = await annual(symbol, 'full');
       const w = await weekly(symbol);
-      const priceCcy = w.meta?.currency || null;
-      const ccyOk = !a.currency || !priceCcy || a.currency === priceCcy;
+      const plan = await fxPlan(a0, w);
+      const ccyOk = !plan.error;
+      // the figures in the price currency, at today's rate (one rate for every year: growth and margins stay those of the original currency)
+      const a = ccyOk && plan.spot !== 1 ? { ...a0, years: a0.years.map((y) => scaleYear(y, MONEY, plan.spot)), now: scaleNow(a0.now, MONEY, plan.spot) } : a0;
+      const priceCcy = plan.pxCcy || w.meta?.currency || null;
       const financial = a.financial ?? false;
       const keys = financial ? KEYS.financial : KEYS.normal;
-      const hist = a.years.map((y) => ({ fy: y.fy, end: y.end, ...(ccyOk ? multiples(y, priceOn(w.bars, y.end), financial) : { price: priceOn(w.bars, y.end) }) }));
+      const pxOn = (d) => plan.price(priceOn(w.bars, d));
+      // each fiscal year's multiples use the rate of that year end, because the price on that day goes with that year's figures
+      const hist = a0.years.map((y) => {
+        const f = plan.at(y.end);
+        const yy = !ccyOk || f == null ? null : f === 1 ? y : scaleYear(y, MONEY, f);
+        return { fy: y.fy, end: y.end, ...(yy ? multiples(yy, pxOn(y.end), financial) : { price: pxOn(y.end) }) };
+      });
       const latest = a.years[a.years.length - 1];
-      const price = w.meta?.price ?? w.bars[w.bars.length - 1]?.c ?? null;
+      const price = plan.price(w.meta?.price ?? w.bars[w.bars.length - 1]?.c ?? null);
       const current = ccyOk ? nowMultiples(a.now, price, financial) : { price, meta: {} };
+      // price × shares against the market value Yahoo quotes: catches an ADR price paired with ordinary-share statements
+      let check = null;
+      if (ccyOk && !plan.same && plan.pxScale === 1 && typeof yahoo.quotes === 'function') {
+        try {
+          const q = await yahoo.quotes([symbol], { fallback: false });
+          check = shareCheck(current.marketCap, q?.quotes?.[symbol]?.marketCap);
+        } catch {
+          check = null;
+        }
+      }
+      const fx = plan.changed && ccyOk ? {
+        from: a0.currency, to: priceCcy, rate: plan.same ? plan.stScale : plan.fx.spot * plan.stScale, asOf: plan.fx?.asOf || null, source: plan.fx?.source || null,
+        route: plan.fx?.route || [], priceQuotedIn: w.meta?.currency || null, historyOk: plan.same || plan.fx.at(a0.years[a0.years.length - 1].end) != null,
+      } : null;
       const stats = {};
       for (const k of keys) {
         const s = (n) => {
@@ -828,8 +881,9 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
         stats[k] = { y5: s(5), y10: s(10) };
       }
       return {
-        symbol, source: a.source, asOf: a.asOf, priceSource: 'Yahoo Finance (weekly closes, split-adjusted)', currency: a.currency, priceCurrency: priceCcy, partial: a.partial, status: a.status,
-        currencyMismatch: ccyOk ? null : `The financial statements are in ${a.currency} but the share price is in ${priceCcy}; Meridian doesn't convert currencies, so the multiples show n/a.`,
+        symbol, source: a.source, asOf: a.asOf, priceSource: 'Yahoo Finance (weekly closes, split-adjusted)', currency: ccyOk && plan.changed ? priceCcy : a.currency, priceCurrency: priceCcy, partial: a.partial, status: a.status,
+        // the figures are in the price currency; `fx` says what was converted and at which rate; `shareCheck.suspect` = per-share figures may be off (ADR ratio)
+        fx, shareCheck: check, currencyMismatch: ccyOk ? null : plan.error,
         financial, industrySource: a.industrySource, keys, profile: a.profile, current, now: a.now, latestFy: latest.fy, latestEnd: latest.end, history: hist, stats, splits: a.splits, years: a.years,
       };
     });
@@ -903,12 +957,13 @@ export function createFundamentals({ sec, yahoo, finnhub = null, kvStore = null,
   /** One company's current multiples (trailing 12 months, today's price), for a peer table. */
   async function peerRow(c) {
     try {
-      const a = await annual(c, 'val');
+      const a0 = await annual(c, 'val');
       const w = await weekly(c);
+      const plan = await fxPlan(a0, w);
+      const a = !plan.error && plan.spot !== 1 ? { ...a0, now: scaleNow(a0.now, MONEY, plan.spot) } : a0;
       const y = a.years[a.years.length - 1];
-      const now = w.meta?.price ?? w.bars[w.bars.length - 1]?.c ?? null;
-      const ccyOk = !a.currency || !w.meta?.currency || a.currency === w.meta.currency;
-      return { symbol: c, fy: y.fy, ttmEnd: a.now?.ttmEnd || null, financial: a.financial ?? false, source: a.source, partial: a.partial, ...(ccyOk ? nowMultiples(a.now, now, a.financial ?? false) : { price: now, currencyMismatch: true }) };
+      const now = plan.price(w.meta?.price ?? w.bars[w.bars.length - 1]?.c ?? null);
+      return { symbol: c, fy: y.fy, ttmEnd: a.now?.ttmEnd || null, financial: a.financial ?? false, source: a.source, partial: a.partial, ...(!plan.error ? nowMultiples(a.now, now, a.financial ?? false) : { price: now, currencyMismatch: true }) };
     } catch (err) {
       return { symbol: c, error: err.message };
     }

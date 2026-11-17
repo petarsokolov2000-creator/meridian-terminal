@@ -52,7 +52,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const fred = createFred({ getKey: () => keyStore.get('fred'), ...opts });
   const rates = createRates(opts);
   const sec = createSec({ ...opts, getContact: () => keyStore.get('sec') });
-  const fundamentals = createFundamentals({ sec, yahoo, finnhub, kvStore, log });
+  const fundamentals = createFundamentals({ sec, yahoo, finnhub, rates, kvStore, log });
   const tenk = createTenK({ sec });
   // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
   const SECTOR_OF = new Map([...LIVE_EQUITIES.map((e) => [e[0], e[2]]), ...MORE_COMPANIES.map((c) => [c[0], c[2]])]);

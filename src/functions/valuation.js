@@ -76,6 +76,12 @@ register({
       ].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
       if (v.currencyMismatch) ctx.el.appendChild(el('div', 'empty', esc(v.currencyMismatch)));
+      const fxn = fxNotice(v);
+      if (fxn) {
+        const box = el('div');
+        box.innerHTML = fxn;
+        ctx.el.appendChild(box);
+      }
       if (v.financial) ctx.el.appendChild(el('p', 'note', 'Banks and insurers: EV/EBITDA, P/S, P/FCF and FCF yield are left out because debt and cash flow are their raw material, not financing. Shown instead: P/E, price to book, price to tangible book and dividend yield.'));
 
       const table = el('div', 'tbl-wrap');
@@ -315,6 +321,23 @@ export function dcfDefaults(years, { beta, rf, erp = 0.05, terminal = 0.025 }) {
   return out;
 }
 
+/**
+ * What to tell the reader when the company's figures were converted into the price currency (see
+ * server/fx.mjs), and when the share count doesn't fit the price (an ADR). HTML, '' when there is nothing to say.
+ */
+export function fxNotice(v, dcfScreen = false) {
+  const out = [];
+  const f = v.fx;
+  if (f && f.from !== f.to) {
+    out.push(`<p class="note"><b>Currency:</b> the company reports in <b>${esc(f.from)}</b> but its share price is in <b>${esc(f.to)}</b>, so the reported figures are converted to ${esc(f.to)} at today's rate (1 ${esc(f.from)} = ${num(f.rate, f.rate < 0.01 ? 6 : 4)} ${esc(f.to)}${f.asOf ? `, ${esc(f.asOf)}` : ''}; source: ${esc(f.source || 'unknown')}). The same rate is used for every year, so growth rates and margins are those of the original currency. ${dcfScreen ? "The DCF keeps today's rate for all future years: it does not forecast the currency." : f.historyOk ? "In the history of multiples, each year uses the rate of that year's end." : 'No exchange-rate history was available, so the multiples of past years show n/a.'}</p>`);
+  } else if (f && f.priceQuotedIn && f.priceQuotedIn !== f.to) {
+    out.push(`<p class="note">The price is quoted in ${esc(f.priceQuotedIn)} (a hundredth of a ${esc(f.to)}); it is shown in ${esc(f.to)}.</p>`);
+  }
+  if (v.shareCheck?.suspect) out.push(`<p class="note warn">${esc(v.shareCheck.text)}</p>`);
+  if (dcfScreen && v.priceCurrency && v.priceCurrency !== 'USD') out.push(`<p class="note">The default discount rate is built from the US 10-year Treasury yield. For a company valued in ${esc(v.priceCurrency)} that may not fit: check it, or enter your own rate.</p>`);
+  return out.join('');
+}
+
 // scenario offsets from the base case (editable afterwards)
 const SCEN = { bear: { growth: -0.03, margin: -0.02, discount: 0.01 }, base: { growth: 0, margin: 0, discount: 0 }, bull: { growth: 0.03, margin: 0.02, discount: -0.01 } };
 
@@ -360,7 +383,9 @@ register({
       const sens = el('div', 'tbl-wrap');
       const detail = el('div', 'tbl-wrap');
       const notes = el('div', 'val-formulas');
-      ctx.el.append(form, out, sens, detail, notes);
+      const fxBox = el('div');
+      fxBox.innerHTML = fxNotice(v, true);
+      ctx.el.append(fxBox, form, out, sens, detail, notes);
       const P = (v2) => (v2 == null ? '' : (v2 * 100).toFixed(1));
       const drawForm = () => {
         form.innerHTML = `<table class="tbl"><thead><tr><th class="l">Assumption</th><th class="r">Bear</th><th class="r">Base</th><th class="r">Bull</th><th class="l">Default comes from</th></tr></thead><tbody>
@@ -393,7 +418,7 @@ register({
       };
       const drawOut = () => {
         const R = Object.fromEntries(['bear', 'base', 'bull'].map((k) => [k, run(scen[k])]));
-        out.innerHTML = [['Price', num(price, 2)], ...['bear', 'base', 'bull'].map((k) => [`${k[0].toUpperCase()}${k.slice(1)} fair value`, `${fv(R[k])} <span class="dim small">margin of safety${help('marginOfSafety')}</span> ${mos(R[k])}${R[k].error ? ` <span class="dim small">(${esc(R[k].error)})</span>` : ''}`])]
+        out.innerHTML = [['Price', `${num(price, 2)}${v.fx && v.priceCurrency ? ` <span class="dim small">${esc(v.priceCurrency)}</span>` : ''}`],...['bear', 'base', 'bull'].map((k) => [`${k[0].toUpperCase()}${k.slice(1)} fair value`, `${fv(R[k])} <span class="dim small">margin of safety${help('marginOfSafety')}</span> ${mos(R[k])}${R[k].error ? ` <span class="dim small">(${esc(R[k].error)})</span>` : ''}`])]
           .map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('') +
           `<div><span class="dim">Terminal value share of base value${help('terminalShare')}</span><b>${R.base.error ? NA : `${num(R.base.tvShare * 100, 0)}%`}</b></div>`;
         // sensitivity of the base case: discount rate × terminal growth

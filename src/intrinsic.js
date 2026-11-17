@@ -27,6 +27,8 @@ export function isStock(E, i) {
 export function compute(v, { beta, rf, sym }) {
   if (!v) return none('no company data');
   if (v.currencyMismatch) return none(v.currencyMismatch);
+  // statements converted into the price currency, but the share count doesn't fit the price (usually an ADR): no number rather than a wrong one
+  if (v.shareCheck?.suspect) return none(`the share count doesn't fit the price (an ADR with several shares per receipt?): price × shares is ${v.shareCheck.ratio.toFixed(1)}× the quoted market value`);
   const years = v.years || [];
   if (v.financial) {
     const y = [...years].reverse().find((r) => fin(r.epsDil) && fin(r.commonEquity) && fin(r.shares ?? r.sharesOut ?? r.sharesDil));

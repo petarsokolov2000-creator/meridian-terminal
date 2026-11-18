@@ -1,8 +1,7 @@
 // VAL: is the stock cheap or expensive against its own history and its peers?
 // DCF: what the business is worth if its cash flows follow stated assumptions.
 //
-// Figures: SEC EDGAR 10-K/10-Q filings first, then Yahoo, then Finnhub for gaps (see
-// server/fundamentals.mjs); prices: Yahoo Finance. "Now" = today's price with the last 12 months.
+// Figures and prices: Yahoo Finance only (see server/fundamentals.mjs). "Now" = today's price with the last 12 months.
 // Nothing is estimated: a missing input shows n/a with the reason, every fallback figure is marked,
 // and every number lists the formula behind it. Banks and insurers get bank metrics (EBITDA and free cash
 // flow don't describe them), and no DCF.
@@ -54,7 +53,7 @@ register({
     if (onlyStocks(ctx, 'Valuation')) return;
     const s = ctx.sec;
     const E = ctx.engine;
-    const wait = loading(ctx, 'Loading 10 years of 10-K figures from the SEC (first time takes about 10 seconds)…');
+    const wait = loading(ctx, 'Loading the annual statements from Yahoo (first time takes a few seconds)…');
     let gone = false;
     let chart = null;
     E.valuation(s.sym).then((v) => {
@@ -71,7 +70,7 @@ register({
         [`Market value${help('marketCap')}`, cur.marketCap ? big(cur.marketCap) : NA],
         [`"Now" uses${help('ttm')}`, v.now?.ttmEnd ? `last 12 months to ${v.now.ttmEnd}${v.now.ttmSource === 'Yahoo' ? ' <span class="dim">(Yahoo)</span>' : ''}${v.now.fyOnly ? ' <span class="dim">(some items: FY)</span>' : ''}` : v.now?.fyOnly ? `FY${v.latestFy} <span class="dim">(no trailing-12-month figures available)</span>` : `last 12 months = FY${v.latestFy} <span class="dim">(no 10-Q since ${v.latestEnd})</span>`],
         ['History', `FY${v.years[0].fy}–FY${v.latestFy} <span class="dim">(fiscal years)</span>`],
-        [v.profile?.sic ? 'Industry (SEC)' : 'Industry', v.profile?.sic ? `${v.profile.sic} · ${esc(v.profile.sicDescription || '')}` : v.industrySource ? esc(v.industrySource) : NA],
+        ['Industry', v.industrySource ? esc(v.industrySource) : NA],
         ['Treated as', v.financial ? 'bank / insurer' : 'operating company'],
       ].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
@@ -164,12 +163,12 @@ register({
       formulas.innerHTML = `<h3>How each figure is calculated (now = ${v.now?.ttmEnd ? `last 12 months to ${esc(v.now.ttmEnd)}` : v.now?.fyOnly ? `FY${v.latestFy}: no trailing figures` : `FY${v.latestFy}, the latest report`})</h3><table class="tbl small"><tbody>${keys.map((k) => `<tr><td class="l"><b>${METRICS[k][0]}</b></td><td class="l val-formula">${esc(METRICS[k][2])}<br><span class="dim">= ${inputs[k]} = </span>${cur[k] == null ? na(cur.meta?.[k]?.why) : fmt(k, cur[k])}${srcList(k)}</td></tr>`).join('')}
         <tr><td class="l"><b>Market value</b></td><td class="l val-formula">Share price × shares outstanding<br><span class="dim">= ${num(cur.price, 2)} × ${M(cur.shares)} · shares: ${esc(cur.sharesBasis || '')}${N.shares?.src && N.shares.src !== 'SEC' ? ` (${esc(N.shares.src)})` : ''}</span></td></tr></tbody></table>`;
 
-      // peers: SEC industry code, editable
+      // peers: Yahoo industry, editable
       const drawPeers = () => {
         const rows = peerState.rows;
         const own = { symbol: s.sym, ...cur, fy: v.latestFy, ttmEnd: v.now?.ttmEnd || null, self: true };
         peersBox.innerHTML = `<h3>Peers ${peerState.data?.rule ? `<span class="dim">· ${esc(peerState.data.rule)}</span>` : peerState.extra.length ? '<span class="dim">· added by you</span>' : ''}</h3>
-          ${peerState.error ? `<p class="note">${esc(peerState.error)}</p>` : !peerState.data ? '<p class="note">Finding companies with the same SEC industry code and loading their 10-K figures (first time takes 20–30 seconds)…</p>' : ''}
+          ${peerState.error ? `<p class="note">${esc(peerState.error)}</p>` : !peerState.data ? '<p class="note">Finding companies in the same Yahoo industry and loading their figures (first time takes 20–30 seconds)…</p>' : ''}
           ${rows.length ? `<table class="tbl"><thead><tr><th class="l">Company</th><th class="r">Period</th>${keys.map((k) => `<th class="r">${METRICS[k][0]}</th>`).join('')}<th></th></tr></thead><tbody>
             ${[own, ...rows].map((r) => `<tr class="${r.self ? 'self' : ''}"><td class="l">${r.self ? `<b>${esc(r.symbol)}</b>` : `<a href="#" class="sec" data-sec="${esc(r.symbol)}">${esc(r.symbol)}</a>`}</td>
               <td class="r dim" title="${r.ttmEnd ? `last 12 months to ${r.ttmEnd}` : 'last 12 months = the latest fiscal year (no 10-Q since)'}">${r.ttmEnd ? `TTM ${r.ttmEnd.slice(0, 7)}` : r.fy ? `FY${r.fy}` : ''}</td>${r.error ? `<td class="l dim" colspan="${keys.length}">${esc(r.error)}</td>` : r.currencyMismatch ? `<td class="l dim" colspan="${keys.length}">reports in another currency than its share price: n/a</td>` : keys.map((k) => `<td class="r">${r[k] == null ? (r.self ? na(cur.meta?.[k]?.why) : na(r.meta?.[k]?.why)) : `${fmt(k, r[k])}${r.self ? '' : srcOnly(r.meta?.[k]?.src, `${r.symbol} ${METRICS[k][0]}`, r.meta?.[k]?.basis)}`}</td>`).join('')}
@@ -313,7 +312,7 @@ export function dcfDefaults(years, { beta, rf, erp = 0.05, terminal = 0.025 }) {
   out.fy = last.fy;
   out.last = last;
   // years whose inputs came from a fallback source (Yahoo/Finnhub), per default
-  const other = (ys2, fields) => ys2.flatMap((y) => fields.map((f) => y.src?.[f]?.s).filter((src) => src && src !== 'SEC').map((src) => `FY${y.fy}: ${src}`));
+  const other = (ys2, fields) => ys2.flatMap((y) => fields.map((f) => y.src?.[f]?.s).filter((src) => src && src !== 'SEC' && src !== 'Yahoo').map((src) => `FY${y.fy}: ${src}`));
   out.fallback = {
     growth: span >= 2 ? [...new Set(other([ys[ys.length - 1 - span], last], ['revenue']))] : [],
     margin: [...new Set(other(ys.slice(-5).filter((y) => y.fcf != null), ['fcf', 'revenue']))],
@@ -349,13 +348,13 @@ register({
     if (onlyStocks(ctx, 'A DCF')) return;
     const s = ctx.sec;
     const E = ctx.engine;
-    const wait = loading(ctx, 'Loading 10-K history from the SEC and the beta from Yahoo…');
+    const wait = loading(ctx, 'Loading the annual statements and the beta from Yahoo…');
     let gone = false;
     Promise.all([E.valuation(s.sym), E.details(s.sym).catch(() => null)]).then(([v, det]) => {
       if (gone) return;
       wait.remove();
       if (v.financial) {
-        ctx.el.innerHTML = `<div class="empty">A free-cash-flow DCF doesn't apply to ${esc(s.sym)}: it's a bank or insurer (SEC industry code ${v.profile?.sic}), where debt and deposits are raw material rather than financing, so "free cash flow" and "net debt" have no meaning. Use <kbd>${esc(s.sym)} VAL</kbd> for price to book, price to tangible book and P/E against history and peers.</div>`;
+        ctx.el.innerHTML = `<div class="empty">A free-cash-flow DCF doesn't apply to ${esc(s.sym)}: it's a bank or insurer (${esc(v.industrySource || 'by its industry')}), where debt and deposits are raw material rather than financing, so "free cash flow" and "net debt" have no meaning. Use <kbd>${esc(s.sym)} VAL</kbd> for price to book, price to tangible book and P/E against history and peers.</div>`;
         return;
       }
       if (v.currencyMismatch) {

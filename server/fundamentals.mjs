@@ -389,7 +389,7 @@ function secNow(raw, fyEnd, splits) {
   return { q, flow, b, bal, dei };
 }
 
-export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, kvStore = null, log = () => {} }) {
+export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = null, kvStore = null, log = () => {} }) {
   const cache = new Map();
   // ttl: milliseconds, or a function of the result (a result with a failed source: 60 s at most)
   const cached = (key, ttl, fn) => {
@@ -448,7 +448,7 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
   function annual(symbol, set = 'full') {
     return cached(`annual:${symbol}:${set}`, (r) => (r.partial ? 60e3 : 6 * 60 * 60e3), async () => {
       const fields = set === 'full' ? new Set(TAGS.map((t) => t[0])) : VAL_FIELDS;
-      const status = { sec: { state: 'ok' }, yahoo: { state: 'not needed' }, finnhub: { state: finnhub?.configured() ? 'not needed' : 'no key' } };
+      const status = { sec: sec ? { state: 'ok' } : { state: 'off' }, yahoo: { state: 'not needed' }, finnhub: { state: finnhub?.configured() ? 'not needed' : sec ? 'no key' : 'off' } };
       let partial = false;
       // splits, for restating per-share figures filed before a split
       let splits = [];
@@ -463,11 +463,13 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
       let profile = null;
       let secData = null;
       let note = null;
-      try {
-        hit = await sec.cikOf(symbol);
-        if (!hit) status.sec = { state: 'none', message: `${symbol} isn't in the SEC's list of US filers` };
-      } catch (err) {
-        status.sec = failed(err);
+      if (sec) {
+        try {
+          hit = await sec.cikOf(symbol);
+          if (!hit) status.sec = { state: 'none', message: `${symbol} isn't in the SEC's list of US filers` };
+        } catch (err) {
+          status.sec = failed(err);
+        }
       }
       if (hit) {
         try {
@@ -491,7 +493,7 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
           const yp = await yahoo.profile(symbol);
           if (yp?.industry || yp?.sector) {
             financial = /^(Banks|Insurance|Capital Markets|Mortgage Finance|Financial Conglomerates|Asset Management)/i.test(yp.industry || '');
-            industrySource = `Yahoo (${yp.sector || ''}${yp.industry ? ` · ${yp.industry}` : ''})`;
+            industrySource = sec ? `Yahoo (${yp.sector || ''}${yp.industry ? ` · ${yp.industry}` : ''})` : [yp.sector, yp.industry].filter(Boolean).join(' · ');
           }
         } catch (err) {
           status.yahooProfile = failed(err);
@@ -566,13 +568,12 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
             continue;
           }
           const parts = [];
-          const sw = secWhy(k);
-          parts.push(sw || 'SEC: not reported');
-          if (fill.includes(k)) {
+          if (sec) parts.push(secWhy(k) || 'SEC: not reported');
+          if (fill.includes(k) || !sec) {
             const ys = status.yahoo;
             parts.push(ys.state === 'failed' ? `Yahoo: ${failText(ys)}` : ys.state === 'other currency' ? `Yahoo: in another currency` : yRange && !yahooYears.some((e) => near(e, y.end)) ? `Yahoo: covers ${yRange} only` : 'Yahoo: not reported');
             const fs = status.finnhub;
-            parts.push(fs.state === 'no key' ? 'Finnhub: no API key set' : fs.state === 'failed' ? `Finnhub: ${failText(fs)}` : fs.state === 'not needed' ? null : 'Finnhub: not reported');
+            if (fs.state !== 'off') parts.push(fs.state === 'no key' ? 'Finnhub: no API key set' : fs.state === 'failed' ? `Finnhub: ${failText(fs)}` : fs.state === 'not needed' ? null : 'Finnhub: not reported');
           }
           const list = parts.filter(Boolean);
           y.na[k] = list.every((p) => /not reported$/.test(p)) ? `not reported (${list.map((p) => p.split(':')[0]).join(', ')})` : list.join('; ');
@@ -589,7 +590,9 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
       return {
         symbol, currency, profile, years, financial, industrySource, partial, status,
         asOf: filedDates[filedDates.length - 1] || years[years.length - 1].end,
-        source: secF.size
+        source: !sec
+          ? 'Yahoo Finance (annual statements)'
+          : secF.size
           ? `SEC EDGAR (XBRL, 10-K and 10-Q filings)${usedOther.length ? `; gaps filled from ${usedOther.map((n) => `${n} (${status[n.toLowerCase()].filled})`).join(' and ')}` : ''}`
           : `${usedOther.join(' and ') || 'Yahoo Finance'} (no SEC data: ${status.sec.state === 'failed' ? `SEC ${failText(status.sec)}` : status.sec.message || 'not an SEC filer'})`,
         now,
@@ -661,7 +664,7 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
     // still missing: the latest fiscal year, labelled FY
     for (const f of [...flows, ...bals, ...(financial ? [] : ['debt']), 'shares']) {
       if (N[f] && (N[f].val != null || N[f].conflict)) continue;
-      if (last[f] != null) N[f] = { val: last[f], basis: 'FY', src: last.src[f]?.s || 'SEC', end: last.end, formula: `FY${last.fy} (no trailing-12-month or later figure)` };
+      if (last[f] != null) N[f] = { val: last[f], basis: 'FY', src: last.src[f]?.s || (sec ? 'SEC' : 'Yahoo'), end: last.end, formula: `FY${last.fy} (no trailing-12-month or later figure)` };
       else N[f] = { val: null, why: last.na[f] || 'not reported' };
     }
 
@@ -907,9 +910,67 @@ export function createFundamentals({ sec, yahoo, finnhub = null, rates = null, k
   }
   const saveSic = () => Promise.resolve(kvStore?.set('sic-map', sicMap)).catch(() => {});
 
+  // Yahoo's industry and sector of a company, remembered like the SIC codes above (a failed lookup is never stored).
+  let indMap = null;
+  async function industryOf(sym) {
+    indMap ||= (await Promise.resolve(kvStore?.get('industry-map')).catch(() => null)) || {};
+    if (indMap[sym]) return indMap[sym];
+    const p = await yahoo.profile(sym); // throws if Yahoo fails
+    if (!p?.industry && !p?.sector) return null;
+    indMap[sym] = { industry: p.industry || null, sector: p.sector || null };
+    return indMap[sym];
+  }
+  const saveIndustry = () => Promise.resolve(kvStore?.set('industry-map', indMap)).catch(() => {});
+
+  /** Peers from Yahoo's classification: the same industry, else the same sector, among `candidates`. */
+  async function yahooPeers(symbol, candidates, limit) {
+    let own;
+    try {
+      own = await industryOf(symbol);
+    } catch (err) {
+      throw Object.assign(new Error(`Yahoo's industry lookup for ${symbol} failed (${failText(err)}), so peers can't be matched right now`), { status: 502 });
+    }
+    if (!own) throw Object.assign(new Error(`Yahoo has no industry or sector for ${symbol} (funds and some foreign listings have none), so peers can't be matched automatically`), { status: 404 });
+    const cands = candidates.filter((c) => c !== symbol).slice(0, 80);
+    const info = {};
+    let lookupErr = null;
+    let lookupFails = 0;
+    await pool(cands, 4, async (c) => {
+      try {
+        info[c] = await industryOf(c);
+      } catch (err) {
+        lookupErr = err;
+        lookupFails++;
+      }
+    });
+    await saveIndustry();
+    let rule = null;
+    let chosen = [];
+    for (const [key, label] of [['industry', 'same Yahoo industry'], ['sector', 'same Yahoo sector']]) {
+      if (!own[key]) continue;
+      chosen = cands.filter((c) => info[c]?.[key] === own[key]);
+      if (chosen.length >= 3) {
+        rule = `${label} (${own[key]})`;
+        break;
+      }
+    }
+    const failNote = lookupFails ? `${lookupFails} of ${cands.length} industry lookups failed (Yahoo ${failText(lookupErr)})` : null;
+    if (chosen.length < 3) throw Object.assign(new Error(`fewer than 3 companies in Meridian's list share ${symbol}'s Yahoo industry or sector${failNote ? `; ${failNote}` : ''}`), { status: failNote ? 502 : 404 });
+    const rows = [];
+    await pool(chosen.slice(0, limit), 2, async (c) => rows.push(await peerRow(c)));
+    const ok = rows.filter((r) => !r.error && !r.currencyMismatch);
+    const med = {};
+    for (const k of [...KEYS.normal, 'pb', 'ptbv', 'divYield']) med[k] = median(ok.map((r) => r[k]));
+    return {
+      symbol, industry: own.industry, sector: own.sector, rule, peers: rows.sort((x, y) => (y.marketCap || 0) - (x.marketCap || 0)), median: med, failNote,
+      partial: !!failNote || rows.some((r) => r.error || r.partial), source: 'Yahoo Finance (industry, statements and prices)',
+    };
+  }
+
   /** Up to `limit` peers: same 4-digit SIC, else 3-digit, else 2-digit, among `candidates`. */
   function peers(symbol, candidates, limit = 8) {
     return cached(`peers:${symbol}`, (r) => (r.partial ? 60e3 : 6 * 60 * 60e3), async () => {
+      if (!sec) return yahooPeers(symbol, candidates, limit);
       let own;
       try {
         own = await sicOf(symbol);

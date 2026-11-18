@@ -471,25 +471,16 @@ export class LiveEngine {
       };
     }
     this.setFocus([]);
-    await Promise.all([this.loadFhEarnings(), this.loadFhEconomic()]);
+    await this.loadFhEconomic();
     this.fhTimer = setInterval(() => {
       api('/api/finnhub/status').then((s) => Object.assign(this.fh, { stream: s.stream, error: s.error, streaming: s.streaming.length })).catch(() => {});
     }, 5000);
-    setInterval(() => this.loadFhEarnings(), 30 * 60000);
     setInterval(() => this.loadFhEconomic(), 15 * 60000);
   }
 
-  // Stream priority: what's on screen first, then the biggest stocks and the coins.
-  setFocus(syms) {
-    if (!this.fh.configured) return;
-    const insts = [...syms.map((s) => this.get(s)), ...this.equities.slice().sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0)), ...this.instruments.filter((i) => i.cls === 'CRYPTO')];
-    const list = [...new Set(insts.filter((i) => i?.fhsym).map((i) => i.fhsym))].slice(0, 50);
-    const sig = list.join(',');
-    if (sig === this.fhSig) return;
-    this.fhSig = sig;
-    fetch('/api/finnhub/stream', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
-      .then((r) => r.json()).then((s) => Object.assign(this.fh, { stream: s.stream, error: s.error, streaming: (s.streaming || []).length })).catch(() => {});
-  }
+  // Prices come from Yahoo only. Finnhub's real-time trade stream used to overwrite them, which made two sources show
+  // two different prices for the same stock, so it is no longer used (Finnhub still provides news and calendars).
+  setFocus() {}
 
   applyTrade({ s, p, v, t }) {
     const inst = this.byFh.get(s);
@@ -513,24 +504,6 @@ export class LiveEngine {
       b.c = p;
       b.h = Math.max(b.h, p);
       b.l = Math.min(b.l, p);
-    }
-  }
-
-  async loadFhEarnings() {
-    try {
-      const list = await api('/api/finnhub/earnings');
-      const rows = [];
-      for (const e of list) {
-        const inst = this.byFh.get(e.symbol);
-        if (!inst || inst.cls !== 'EQ') continue;
-        const row = { sym: inst.sym, name: inst.name, date: e.date, when: { bmo: 'BMO', amc: 'AMC', dmh: 'DMH' }[e.hour] || '—', est: e.epsEstimate, actual: e.epsActual, revEst: e.revenueEstimate, revActual: e.revenueActual, fromFinnhub: true };
-        rows.push(row);
-        if (!inst.earnings?.fromFinnhub || row.date >= etParts().iso) inst.earnings = row;
-      }
-      this.earnings = rows.sort((a, b) => a.date.localeCompare(b.date) || a.sym.localeCompare(b.sym));
-      this.fh.earnings = true;
-    } catch (err) {
-      this.fh.earningsError = err.message;
     }
   }
 
@@ -599,7 +572,7 @@ export class LiveEngine {
   filings(sym) {
     return api(`/api/filings?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
-  // VAL / DCF: SEC 10-K history (Yahoo for non-SEC filers) and prices; peers by SEC industry code
+  // VAL / DCF: Yahoo annual statements and prices; peers by Yahoo industry
   annual(sym) {
     return api(`/api/annual?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
@@ -654,13 +627,8 @@ export class LiveEngine {
   sourceLabel() {
     if (this.status.error) return { text: this.status.quotesAt ? 'STALE DATA' : 'DATA ERROR', title: this.status.error, cls: 'err' };
     const age = Math.round((Date.now() - this.status.quotesAt) / 1000);
-    const yahoo = `Quotes from Yahoo Finance, refreshed every ${QUOTE_MS / 1000}s. Exchange data may be delayed up to 15–20 min.${this.status.degraded ? ' Quote API refused; using slower chart fallback.' : ''}`;
-    if (this.fh.configured) {
-      const live = this.fh.stream === 'live' && !this.fh.error;
-      const fh = live ? `Finnhub real-time trades streaming for ${this.fh.streaming} symbols (US stocks and crypto); everything else from Yahoo.` : `Finnhub stream ${this.fh.stream}${this.fh.error ? `: ${this.fh.error}` : ''}.`;
-      return { text: `YAHOO · ${age}s · ${live ? `FH RT ${this.fh.streaming}` : 'FH ✕'}`, title: `${fh} ${yahoo}`, cls: live && !this.status.degraded ? 'ok' : 'warn' };
-    }
-    return { text: `YAHOO · ${age}s`, title: `${yahoo} Add a Finnhub key (FINNHUB <key>) for real-time US stock trades.`, cls: this.status.degraded ? 'warn' : 'ok' };
+    const yahoo = `Prices and company figures all come from Yahoo Finance; quotes refresh every ${QUOTE_MS / 1000}s. Exchange data may be delayed up to 15–20 min.${this.status.degraded ? ' Quote API refused; using slower chart fallback.' : ''}`;
+    return { text: `YAHOO · ${age}s`, title: yahoo, cls: this.status.degraded ? 'warn' : 'ok' };
   }
 
   // ---------------------------------------------------------------- queries
@@ -730,6 +698,36 @@ export class LiveEngine {
       return this.moreState;
     })();
     return this.moreLoading;
+  }
+
+  /**
+   * Volatility, beta and RSI of the extra companies. The server works them out in the background from a year of
+   * daily closes (about a minute the first time); asking again returns whatever is ready so far.
+   */
+  async moreStats() {
+    this.moreList();
+    if (this.statsLoading) return this.statsLoading;
+    if (this.statsState && !this.statsState.running && Date.now() - this.statsAt < 30 * 60e3) return this.statsState;
+    this.statsLoading = (async () => {
+      try {
+        const r = await api('/api/screen-stats');
+        const at = Object.fromEntries(r.fields.map((f, k) => [f, k]));
+        for (const [sym, row] of Object.entries(r.stats)) {
+          const c = this.moreBySym.get(sym);
+          if (!c) continue;
+          c.realVol = row[at.vol] == null ? null : row[at.vol] / 100;
+          c.histBeta = row[at.beta];
+          c.rsiNow = row[at.rsi];
+        }
+        this.statsState = { done: r.done, total: r.total, failed: r.failed, running: r.running, count: Object.keys(r.stats).length, error: r.error };
+      } catch (err) {
+        this.statsState = { done: 0, total: this.more.length, running: false, count: this.more.filter((c) => c.realVol != null).length, error: err.message };
+      }
+      this.statsAt = Date.now();
+      this.statsLoading = null;
+      return this.statsState;
+    })();
+    return this.statsLoading;
   }
 
   daily(sym) {

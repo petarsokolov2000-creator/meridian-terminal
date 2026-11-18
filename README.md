@@ -80,27 +80,28 @@ From a terminal: `node serve.mjs` (`--open` opens the browser, `--lan` enables p
 The first start each day loads a year of history for ~120 instruments (20–40 s). After
 that it's cached in `.cache/` and starts instantly.
 
-## Finnhub (optional, recommended)
+## One data source: Yahoo Finance
 
-A free [Finnhub](https://finnhub.io) key adds **real-time trades** for US stocks and crypto
-(prices tick live, and `TAPE` shows actual trades with sizes), **news with summaries**, and an
-**earnings calendar with EPS/revenue estimates and actuals** (`EARN`).
+All prices, company figures (annual and quarterly statements), ratios, valuation (`VAL`, `DCF`), peers, `KEYS`,
+`SCRN` and the earnings screens come from **Yahoo Finance only**. Two sources never mix in one number, so two screens
+can't show two different values for the same thing. If Yahoo lacks an item the cell says `n/a`; tap it for the reason.
 
-**What the free Finnhub key adds when Yahoo is throttled or has gaps** (it is only asked for what is still empty, and
-results are kept for hours so the 60 calls a minute limit is not touched): the earnings history (`EPS`), insider trades
-(`INSIDER`, `HOLD`; Finnhub gives no job titles, so roles show as "—"), analyst rating counts and industry (`ANLY`, `REV`),
-and ready-made key statistics (`KEYS`: margins, returns, ratios, 52-week range, beta, dividend) for what the price history
-and reported figures could not fill. A figure filled this way carries the marker "alt" and says "Finnhub metrics". Not on the
-free plan, so still empty with a reason: analyst estimates and price targets, rating changes, institution and fund holders.
-`GAPS` shows what each source filled.
+Honest limits of this choice: Yahoo gives about 4-5 years of annual statements (10-year medians in `VAL` are shorter or
+`n/a`), and its numbers are not audited the way an SEC filing is. Foreign companies are converted into the price currency
+(see `VAL`/`DCF`).
 
-Add it once: start Meridian, then type **`FINNHUB yourkey`** in the command line. The server
-checks the key with Finnhub and saves it to `.finnhub-key` on this PC (git-ignored, never sent
-to the browser or kept in command history). `FINNHUB` shows the status; `FINNHUB OFF` removes
-the key. Alternatively set the `FINNHUB_API_KEY` environment variable.
+Other sources are used only for things that don't overlap with the numbers above: SEC EDGAR for filing text and links
+(`FILE`, `SEG`, `RISK`), FRED for macro series, and Finnhub (optional) for **news with summaries** and the **economic
+calendar** (`ECO`, a paid Finnhub plan). Finnhub no longer provides prices, earnings or company figures.
 
-Free-plan limits: 50 streamed symbols at a time (what's on screen goes first), 60 requests a
-minute. The economic calendar (`ECO`) is on Finnhub's paid plans; with a free key `ECO` says so.
+Add a Finnhub key once with **`FINNHUB yourkey`** in the command line. The server checks the key and saves it to
+`.finnhub-key` on this PC (git-ignored, never sent to the browser or kept in command history). `FINNHUB` shows the
+status; `FINNHUB OFF` removes the key. Alternatively set the `FINNHUB_API_KEY` environment variable.
+
+`SCRN` also lists ~1,150 extra companies. Their **Vol %, Beta and RSI** are worked out on the server from one year of
+Yahoo daily closes (volatility = standard deviation of daily log returns x sqrt(252); beta against the S&P 500; Wilder
+14-day RSI). The first load takes about a minute and fills in progressively (the line above the table shows the
+progress); results are kept for 6 hours.
 
 ## FRED (optional, free): official US economic data
 
@@ -150,7 +151,6 @@ These publish once a day after the close, so they don't tick intraday.
 ## Real data vs. simulation
 
 The top bar shows the source. **YAHOO · 8s** means real quotes, refreshed every 15 seconds;
-**FH RT 50** means Finnhub is streaming real-time trades for 50 symbols (hover for details).
 **STALE DATA** or **DATA ERROR** means Yahoo stopped answering. **SIMULATED** means the built-in
 simulation. Switch with `MODE LIVE` / `MODE SIM`.
 
@@ -229,14 +229,12 @@ New in this release, in plain words:
   short interest) are listed but not counted against the score.
 - **Fewer n/a**: `KEYS` no longer depends on Yahoo's statistics page alone. What Yahoo leaves out (or all of it, when Yahoo
   answers HTTP 429) is worked out from the price history (52-week range, moving averages, volume, beta), the quote feed and
-  the company's reported figures (SEC, then Yahoo, then Finnhub): margins, returns, cash, debt, book value, free cash flow and
+  the company's reported Yahoo figures: margins, returns, cash, debt, book value, free cash flow and
   the multiples. Such figures carry an `alt` marker (tap it for the source) and a figure that stays empty says why when you
-  tap `n/a`. `FIN` (annual) falls back to the reported SEC/Finnhub figures when Yahoo's statements are throttled.
-  With a free Finnhub key the remaining gaps shrink further (see "What the free Finnhub key adds" below).
-  Analyst estimates, price targets, rating changes and holder lists exist only at Yahoo (Finnhub charges for them).
+  tap `n/a`. 
 - `ALLOC` (also `WHERE`, `USES`, `MONEY`, `PIE`): where the money goes. Base is operating cash flow plus R&D (net income for banks);
   slices are dividends, buybacks, capex, R&D, acquisitions, debt repaid and the rest kept. Uses a source did not report count as 0,
-  debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year, the **12 months** just reported (latest annual report + the quarters since, from the SEC's 10-Q filings, or Yahoo's trailing figures; a use for which no source has a 12-month figure counts as 0 and is listed) or the 5-year sum.
+  debt repaid is gross (new borrowing is not netted). Tabs switch the fiscal year, the **12 months** just reported (latest annual report + the quarters since, from Yahoo's trailing figures; a use for which no source has a 12-month figure counts as 0 and is listed) or the 5-year sum.
 - `PREVIEW` (also `EARNPREV`, `EPV`, `ERNP`): earnings preview of one stock (`AAPL PREVIEW`): the next report date, expected EPS and revenue, how often it beat in the past, how far the share typically moves over a report (the 2-day move around the report date, measured from the company's SEC 8-K filings against the price history) and a plain-English reading. Limits: Yahoo supplies only about 4 quarters of EPS history, so the beat rate is of those 4; the report time (before open / after close) is unknown, so the move is an approximation; companies outside the SEC show no moves. A history, not a forecast.
 - `PRISK` (also `PVAR`, `PRSK`; overlaps with `MARS`, which also measures the `PORT` book and adds stress tests): how risky the portfolio is. Volatility, "a bad day" (the 1-in-20 loss), the average of the worst days, which positions carry the risk (weight vs share of risk), which positions move together, sectors and market beta. It measures the **paper portfolio of `PORT`** (the practice book, not a brokerage account); test any mix with `PRISK AAPL:100 MSFT:50 JPM:-20` (a minus is a short). Based on the last year of daily prices: a calm year hides risk, and a real crash can be worse than any day in the window.
 - `DIVCAL` (also `DIVC`, `DIVINC`, `INCOME`): dividend calendar and income of the portfolio. A 12-month grid of the dividends expected (each regular payment of the last 12 months is assumed to come round again, at the latest amount) and the ones received in the last 12 months, income per year, yield and yield on cost, and a warning when a company **cut** its dividend, stopped paying, or one payer supplies half the income. Uses the paper portfolio of `PORT` or a typed basket (`DIVCAL KO:200 JNJ:50`). Months are ex-dividend months (the money arrives a few weeks later); one-off special dividends are left out of the estimate; nothing is a promise.

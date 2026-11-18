@@ -17,9 +17,9 @@ import { MORE_COMPANIES } from '../src/companies.js';
 import { LIVE_EQUITIES } from '../src/live-universe.js';
 import { createFundamentals } from './fundamentals.mjs';
 import { fillStats } from './gapfill.mjs';
-import { earningsFrom, insidersFrom, trendFrom, profileFrom } from './finnhub-data.mjs';
 import { createTenK } from './tenk.mjs';
 import { createShips } from './ships.mjs';
+import { createScreenStats } from './screenstats.mjs';
 
 export const KEYS = {
   finnhub: { label: 'Finnhub', pattern: /^[A-Za-z0-9]{10,64}$/ },
@@ -52,8 +52,9 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const fred = createFred({ getKey: () => keyStore.get('fred'), ...opts });
   const rates = createRates(opts);
   const sec = createSec({ ...opts, getContact: () => keyStore.get('sec') });
-  const fundamentals = createFundamentals({ sec, yahoo, finnhub, rates, kvStore, log });
+  const fundamentals = createFundamentals({ yahoo, rates, kvStore, log });
   const tenk = createTenK({ sec });
+  const screenStats = createScreenStats({ yahoo, symbols: MORE_COMPANIES.map((c) => c[0]), log });
   // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
   const SECTOR_OF = new Map([...LIVE_EQUITIES.map((e) => [e[0], e[2]]), ...MORE_COMPANIES.map((c) => [c[0], c[2]])]);
   const peerCandidates = (sym) => {
@@ -120,12 +121,9 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const CHECKS = [
     { id: 'yahoo-prices', name: 'Yahoo Finance · price history', used: 'Charts, the watchlist and every price', run: () => yahoo.probe.prices() },
     { id: 'yahoo-quotes', name: 'Yahoo Finance · live quotes', used: 'Prices that refresh every few seconds', run: () => yahoo.probe.quotes(), ifFails: 'Meridian then reads prices from the chart data instead, which is slower.' },
-    { id: 'yahoo-financials', name: 'Yahoo Finance · company financials', used: 'FA, KEYS, EPS, HOLD, PEERS margins; fills gaps in VAL, QUAL, CHECK', run: () => yahoo.probe.financials() },
-    { id: 'sec-list', name: 'SEC EDGAR · company list (www.sec.gov)', used: 'Needed before any SEC figure; also FILE, SEG, RISK', run: () => sec.probe.list() },
-    { id: 'sec-figures', name: 'SEC EDGAR · reported figures (data.sec.gov)', used: 'VAL, DCF, QUAL, CAP, CHECK, COMPARE', run: () => sec.probe.figures(), ifFails: 'Those screens then use Yahoo and Finnhub (about 4 years of history instead of 10+). If it stays at HTTP 403, set your own contact address for the SEC with SECID <your email>.' },
-    { id: 'finnhub', key: 'finnhub', name: 'Finnhub · real-time price', used: 'Real-time trades, news summaries, earnings estimates', run: () => finnhub.probe.quote() },
-    { id: 'finnhub-company', key: 'finnhub', name: 'Finnhub · company metrics', used: 'Fills gaps in KEYS, EPS history, insider trades and ANLY rating counts when Yahoo has none', run: () => finnhub.probe.company() },
-    { id: 'finnhub-financials', key: 'finnhub', name: 'Finnhub · financial statements', used: 'Third source for older years in VAL and QUAL', run: () => finnhub.probe.reported() },
+    { id: 'yahoo-financials', name: 'Yahoo Finance · company financials', used: 'FA, KEYS, EPS, HOLD, PEERS, VAL, DCF, QUAL, CAP, CHECK, COMPARE: every company figure', run: () => yahoo.probe.financials() },
+    { id: 'sec-list', name: 'SEC EDGAR · company list (www.sec.gov)', used: "FILE, SEG, RISK: the text of a company's own 10-K (no figures from it are mixed into VAL, DCF or KEYS)", run: () => sec.probe.list() },
+    { id: 'finnhub', key: 'finnhub', name: 'Finnhub · news and calendars', used: 'News summaries and the economic calendar (no prices or company figures)', run: () => finnhub.probe.quote() },
     { id: 'ais', key: 'ais', name: 'AISStream · ships worldwide', used: 'SHIPS: live positions of ships everywhere AIS stations can hear them', run: async () => (await ships.check()) && 'the key works' },
     { id: 'digitraffic', name: 'Digitraffic · ships in Finland and the Baltic', used: 'SHIPS without an AISStream key (Baltic Sea only)', run: () => ships.probe.digitraffic() },
     { id: 'fred', key: 'fred', name: 'FRED · US economic data', used: 'ECO', run: async () => (await fred.check()) && 'the key works' },
@@ -244,39 +242,8 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
       return { meta: ch.meta, bars: ch.bars };
     },
     '/api/news': async (q) => yahoo.news(String(q.get('q') || 'stock market').slice(0, 60), Math.min(30, Number(q.get('n')) || 20)),
-    // Yahoo's analyst profile; when Yahoo is throttled or has no rating counts, Finnhub's free plan adds the
-    // rating counts and the industry. Price targets and rating changes are premium there, so they stay empty.
-    '/api/profile': async (q) => {
-      const sym = needSym(q);
-      let p = null;
-      let err = null;
-      try {
-        p = await yahoo.profile(sym);
-      } catch (e) {
-        err = e;
-      }
-      if (p?.trend && p.industry) return p;
-      if (!finnhub.configured()) {
-        if (p) return { ...p, altWhy: 'no Finnhub key set (FINNHUB yourkey), which could add rating counts' };
-        throw err;
-      }
-      const [rec, prof] = await Promise.allSettled([p?.trend ? null : finnhub.recommendation(sym), p?.industry ? null : finnhub.profile(sym)]);
-      const t = rec.status === 'fulfilled' && rec.value ? trendFrom(rec.value) : null;
-      const f = prof.status === 'fulfilled' && prof.value ? profileFrom(prof.value) : {};
-      if (!p && !t && !Object.values(f).some(Boolean)) throw err || rec.reason || prof.reason;
-      const out = { actions: [], income: [], earningsDates: [], ...(p || {}) };
-      const src = {};
-      if (t) {
-        out.trend = t.trend;
-        if (out.recMean == null) { out.recMean = t.recMean; out.recKey = t.recKey; }
-        if (out.analysts == null) out.analysts = t.analysts;
-        src.trend = 'Finnhub';
-      }
-      for (const k of ['industry', 'country', 'website']) if (out[k] == null && f[k]) { out[k] = f[k]; src[k] = 'Finnhub'; }
-      out.altSrc = src;
-      out.altWhy = p ? null : `Yahoo's analyst page did not answer (${err?.message || 'error'}); rating counts and industry come from Finnhub. Price targets and rating changes need Finnhub's paid plan, so they stay empty`;
-      return out;
-    },
+    // Yahoo's analyst profile (rating counts, price targets, industry)
+    '/api/profile': async (q) => yahoo.profile(needSym(q)),
     '/api/finnhub/status': async () => finnhub.status(),
     '/api/rates': async () => {
       // Each source on its own: one failing leaves the other.
@@ -289,7 +256,6 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     '/api/fred/economy': async () => fred.economy(),
     '/api/finnhub/news': async (q) => finnhub.news(['general', 'forex', 'crypto', 'merger'].includes(q.get('category')) ? q.get('category') : 'general'),
     '/api/finnhub/company-news': async (q) => finnhub.companyNews(needSym(q)),
-    '/api/finnhub/earnings': async () => finnhub.earnings(),
     '/api/finnhub/economic': async () => finnhub.economic(),
     // Company financials: statements (annual/quarterly), earnings & ownership, dividends, filings.
     '/api/statements': async (q) => {
@@ -324,31 +290,13 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
         mktBars: () => yahoo.chart('^GSPC', '1y', '1d'),
         quote: async () => (await yahoo.quotes([sym], { fallback: false })).quotes[sym] || null,
         annual: () => fundamentals.annual(sym, 'full'),
-        finnhub: finnhub.configured() ? () => finnhub.metric(sym) : null,
       });
-      // Yahoo's earnings history and insider list: Finnhub's free plan has both (only asked when Yahoo's are empty)
-      const alt = {};
-      if (finnhub.configured()) {
-        const [eh, ins] = await Promise.allSettled([
-          d?.earnings?.length ? null : finnhub.earningsHistory(sym),
-          d?.insiders?.length ? null : finnhub.insiders(sym),
-        ]);
-        const e = eh.status === 'fulfilled' && eh.value ? earningsFrom(eh.value) : [];
-        const i = ins.status === 'fulfilled' && ins.value ? insidersFrom(ins.value) : [];
-        if (e.length) alt.earnings = e;
-        if (i.length) alt.insiders = i;
-        alt.asked = { earnings: !d?.earnings?.length, insiders: !d?.insiders?.length };
-        alt.errors = [eh, ins].filter((x) => x.status === 'rejected').map((x) => x.reason?.message).filter(Boolean);
-      }
       const got = Object.keys(filled.src).length;
-      if (!d && !got && !alt.earnings && !alt.insiders) throw yahooError; // nothing from anywhere: report Yahoo's error as before
+      if (!d && !got) throw yahooError; // nothing from anywhere: report Yahoo's error as before
       const out = {
         earnings: [], estimates: [], ownership: {}, institutions: [], funds: [], insiders: [],
         ...(d || {}),
-        ...(alt.earnings ? { earnings: alt.earnings } : {}),
-        ...(alt.insiders ? { insiders: alt.insiders } : {}),
-        altSrc: { ...(alt.earnings ? { earnings: 'Finnhub' } : {}), ...(alt.insiders ? { insiders: 'Finnhub' } : {}) },
-        altWhy: { finnhub: finnhub.configured() ? (alt.errors?.length ? `Finnhub: ${alt.errors[0]}` : null) : 'no Finnhub key set (FINNHUB yourkey)' },
+        altSrc: {}, altWhy: {},
         stats: filled.stats, statsSrc: filled.src, statsWhy: filled.why,
         partial: d ? null : `Yahoo's statistics page did not answer (${yahooError?.message || 'error'}); the figures below come from price history and reported financials`,
       };
@@ -375,6 +323,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     // Quotes for the 1,000+ extra companies (src/companies.js), for the screener: one Yahoo
     // request per 50 companies, at most once a minute, and only the fields the screener uses.
     '/api/more-quotes': async () => moreQuotes(),
+    '/api/screen-stats': async () => screenStats.snapshot(),
     // valuation and fundamentals (VAL, DCF): SEC 10-K figures, Yahoo prices
     '/api/annual': async (q) => fundamentals.annual(needSym(q), 'full'),
     '/api/valuation': async (q) => fundamentals.valuation(needSym(q)),
@@ -431,7 +380,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     },
     async post(pathname, body) {
       if (pathname === '/api/finnhub/stream') {
-        finnhub.setStream((Array.isArray(body?.symbols) ? body.symbols : []).filter((s) => typeof s === 'string' && oneSym(s)));
+        // prices are Yahoo only now: the live-trade stream stays off (the page no longer asks for it)
         return finnhub.status();
       }
       if (pathname === '/api/sec/contact') {

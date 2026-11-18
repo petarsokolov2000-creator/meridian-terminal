@@ -173,7 +173,7 @@ live('TAPE', (ctx) => {
   const update = () => {
     head();
     const real = s.prints.filter((p) => p.real);
-    if (real.length || (ctx.engine.fh.stream === 'live' && s.fhsym)) {
+    if (real.length) {
       const buyV = real.filter((p) => p.side > 0).reduce((a, p) => a + p.q, 0);
       const tot = real.reduce((a, p) => a + p.q, 0) || 1;
       box.innerHTML = `<p class="note">Real-time trades from Finnhub · last ${real.length} · buy-side ${num((buyV / tot) * 100, 0)}% of volume (tick rule)</p>
@@ -181,7 +181,7 @@ live('TAPE', (ctx) => {
         ${real.slice(0, 80).map((p) => `<tr><td class="l dim">${ctx.engine.minuteLabel(p.s / 60)}:${String(Math.floor(((p.s % 60) + 60) % 60)).padStart(2, '0')}</td><td class="r ${p.side > 0 ? 'up' : 'down'}">${num(p.p, s.dp)}</td><td class="r ${p.q >= 1000 ? 'hl-big' : ''}">${p.q.toLocaleString('en-US')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Streaming. Waiting for the first trade (US stocks trade 09:30–16:00 ET; crypto around the clock).</div>'}`;
       return;
     }
-    box.innerHTML = `<p class="note">${ctx.engine.fh.configured ? `${esc(s.sym)} isn't on the Finnhub stream (US stocks and crypto only, 50 at a time).` : 'Free Yahoo data has no trade-by-trade feed; add a Finnhub key (<kbd>FINNHUB &lt;key&gt;</kbd>) for real-time US stock trades.'} Below: price changes seen at each 15-second quote refresh.</p>
+    box.innerHTML = `<p class="note">Yahoo's free data has no trade-by-trade feed. Below: price changes seen at each 15-second quote refresh.</p>
       ${s.prints.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Time ET</th><th class="r">Price</th><th class="r">Move</th></tr></thead><tbody>
       ${s.prints.slice(0, 60).map((p, i, a) => `<tr><td class="l dim">${ctx.engine.minuteLabel(p.s / 60)}</td><td class="r ${p.side > 0 ? 'up' : 'down'}">${num(p.p, s.dp)}</td><td class="r dim">${a[i + 1] ? signed(p.p - a[i + 1].p, s.dp) : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Waiting for the first price change…</div>'}`;
   };

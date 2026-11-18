@@ -243,7 +243,7 @@ function timeseries(u) {
   const dates = quarterly
     ? ['2024-09-30', '2024-12-31', '2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31', '2026-03-31', '2026-06-30', '2026-09-30']
     : ['2021-09-30', '2022-09-30', '2023-09-30', '2024-09-30', '2025-09-30', '2026-09-30'];
-  const base = { TotalRevenue: 3.9e11, CostOfRevenue: 2.1e11, GrossProfit: 1.8e11, OperatingIncome: 1.2e11, NetIncome: 9.7e10, DilutedEPS: 6.1, TotalAssets: 3.5e11, StockholdersEquity: 7e10, OperatingCashFlow: 1.1e11, CapitalExpenditure: -1.1e10, FreeCashFlow: 9.9e10 };
+  const base = { DilutedAverageShares: 1.6e10, OrdinarySharesNumber: 1.55e10, TotalRevenue: 3.9e11, CostOfRevenue: 2.1e11, GrossProfit: 1.8e11, OperatingIncome: 1.2e11, NetIncome: 9.7e10, DilutedEPS: 6.1, TotalAssets: 3.5e11, StockholdersEquity: 7e10, OperatingCashFlow: 1.1e11, CapitalExpenditure: -1.1e10, FreeCashFlow: 9.9e10 };
   const result = types.map((t) => {
     const name = t.replace(/^(annual|quarterly|trailing)/, '');
     // a type Yahoo has no data for comes back as just a meta block

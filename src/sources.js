@@ -1,8 +1,7 @@
-// Where each number came from, on screen. Figures come from the SEC first, then Yahoo, then
-// Finnhub (server/fundamentals.mjs). A cell filled from a fallback gets a small marker: "Y"
-// (Yahoo), "F" (Finnhub), or "S+Y" etc. when one ratio mixes sources. Tapping it (or hovering)
-// shows each input's source, date and the 2% cross-check. A missing number shows "n/a" that
-// can be tapped for the reason; "sources disagree" when a fallback failed the cross-check.
+// Where each number came from, on screen. Every company figure comes from Yahoo Finance
+// (server/fundamentals.mjs), so there is nothing to mix and cells carry no source marker; a
+// missing number shows "n/a" that can be tapped for the reason. (The marker code stays for
+// figures that carry another source, such as ones computed from price history.)
 
 import { esc, big, num } from './fmt.js';
 import { help } from './glossary.js';
@@ -44,11 +43,11 @@ export function baseFields(y, fields) {
 /** One line per reported figure: its source, date, and the cross-check. */
 function describe(y, f) {
   const s = y.src?.[f] || {};
-  let t = `${LABEL[f] || f}: ${amount(f, y[f])} · ${NAME[s.s] || s.s || 'SEC EDGAR'}`;
+  let t = `${LABEL[f] || f}: ${amount(f, y[f])} · ${NAME[s.s] || s.s || 'Yahoo Finance'}`;
   if (s.s === 'SEC') t += `${s.form ? ` ${s.form}` : ''}${s.filed ? ` filed ${s.filed}` : ''}${s.tag ? ` (${s.tag})` : ''}`;
   else if (s.s === 'Yahoo') t += ` annual statements, period ending ${s.period}${s.item ? ` (${s.item})` : ''}`;
   else if (s.s === 'Finnhub') t += ` as-reported ${s.form || '10-K'}${s.filed ? ` filed ${s.filed}` : ''}${s.tag ? ` (${s.tag})` : ''}`;
-  if (s.s && s.s !== 'SEC') {
+  if (s.s && s.s !== 'SEC' && (s.check || s.s !== 'Yahoo')) {
     const c = s.check;
     t += c ? ` · cross-checked: FY${c.fy} ${c.primary} ${amount(f, c.primaryVal)} vs ${s.s} ${amount(f, c.fallbackVal)}, ${num(c.diff * 100, 1)}% apart` : ' · unchecked: no year where the primary source and this one both have it';
   }
@@ -60,7 +59,7 @@ const button = (cls, label, text) => `<button type="button" class="srcm ${cls}" 
 /** "Y", "F" or "S+Y" for a combined source string; '' when it's all SEC. */
 export function letters(src) {
   const parts = String(src || '').split('+').filter(Boolean);
-  if (!parts.length || (parts.length === 1 && parts[0] === 'SEC')) return '';
+  if (!parts.length || (parts.length === 1 && (parts[0] === 'SEC' || parts[0] === 'Yahoo'))) return '';
   return parts.map((p) => LETTER[p] || p[0]).join('+');
 }
 
@@ -139,7 +138,7 @@ function nowBase(N, fields) {
 const nowLine = (N, f) => {
   const x = N[f];
   let t = `${LABEL[f] || f}: ${amount(f, x.val)} · ${NAME[x.src] || x.src}${x.basis === 'FY' ? ' · latest fiscal year, not trailing 12 months' : ''} — ${x.formula || ''}`;
-  if (x.src === 'Yahoo') t += x.check ? ` · cross-checked: FY${x.check.fy} SEC ${amount(f, x.check.primaryVal)} vs Yahoo ${amount(f, x.check.fallbackVal)}, ${num(x.check.diff * 100, 1)}% apart` : ' · unchecked: no year where the SEC and Yahoo both have it';
+  if (x.src === 'Yahoo' && x.check) t += ` · cross-checked: FY${x.check.fy} SEC ${amount(f, x.check.primaryVal)} vs Yahoo ${amount(f, x.check.fallbackVal)}, ${num(x.check.diff * 100, 1)}% apart`;
   return t;
 };
 /** Lines describing the inputs of a "now" figure. */
@@ -162,6 +161,7 @@ export function statusLine(st) {
   if (!st) return '';
   const one = (name, s) => {
     if (!s) return null;
+    if (s.state === 'off') return null;
     if (s.state === 'ok') return `${name} ✓${s.filled ? ` (filled ${s.filled} figure${s.filled === 1 ? '' : 's'})` : ''}`;
     if (s.state === 'failed') return `<span class="down">${name} failed: ${esc(s.message)}</span>`;
     if (s.state === 'partial') return `<span class="down">${name} partly failed: ${esc(s.message)}</span>`;
@@ -176,7 +176,7 @@ export function statusLine(st) {
     st.yahootrailing ? `<span class="down">Yahoo trailing figures failed: ${esc(st.yahootrailing.message)}</span>` : null,
     st.yahooquarterly ? `<span class="down">Yahoo quarterly balance sheet failed: ${esc(st.yahooquarterly.message)}</span>` : null,
   ];
-  return `Data${help('dataSources')}: ${[one('SEC EDGAR', st.sec), one('Yahoo Finance', st.yahoo), one('Finnhub', st.finnhub), ...extra].filter(Boolean).join(' · ')}. Y = filled from Yahoo, F = from Finnhub, S+Y = a ratio mixing sources; tap a marker or an n/a for details.`;
+  return `Data${help('dataSources')}: ${[one('SEC EDGAR', st.sec), one('Yahoo Finance', st.yahoo), one('Finnhub', st.finnhub), ...extra].filter(Boolean).join(' · ')}. Every figure comes from Yahoo Finance; tap an n/a for the reason.`;
 }
 
 /** Marker for a 5y/10y median that used fallback figures in some years: list = ['FY2016: Finnhub', ...]. */
@@ -184,7 +184,7 @@ export function windowMark(list) {
   if (!list?.length) return '';
   const srcs = [...new Set(list.flatMap((l) => l.split(': ')[1].split('+')))];
   const lab = letters(['SEC', 'Yahoo', 'Finnhub'].filter((s) => srcs.includes(s)).join('+')) || letters(srcs.join('+'));
-  return lab ? button(lab.includes('+') ? 'mix' : '', lab, ['Years in this window that used fallback figures (the others are all SEC):', ...list].join('\n')) : '';
+  return lab ? button(lab.includes('+') ? 'mix' : '', lab, ['Years in this window that used fallback figures (the others come from the main source):', ...list].join('\n')) : '';
 }
 
 /** Marker from a combined source string alone (peer rows), with a short explanation. */
@@ -200,18 +200,12 @@ export function srcNote(y, fields, prev = null, prevFields = []) {
   const cur = baseFields(y, fields);
   const pre = prev ? baseFields(prev, prevFields) : [];
   const all = [...cur.map((f) => y.src?.[f]?.s), ...pre.map((f) => prev.src?.[f]?.s)].filter(Boolean);
-  if (all.every((x) => x === 'SEC')) return '';
+  if (new Set(all).size <= 1 && all.every((x) => x === 'SEC' || x === 'Yahoo')) return '';
   const mixed = new Set(all).size > 1;
   return `<br><span class="dim small">${mixed ? '<b>Mixes sources.</b> ' : ''}${[...cur.map((f) => describe(y, f)), ...pre.map((f) => `FY${prev.fy} ${describe(prev, f)}`)].map(esc).join('<br>')}</span>`;
 }
 
-/**
- * A one-line note when a list (earnings history, insider trades, rating counts) was filled from Finnhub, or
- * why Finnhub could not fill it. `d` is the details/profile answer; `kind` the key in d.altSrc.
- */
-export function altNote(d, kind, label, empty) {
-  if (d?.altSrc?.[kind]) return `<p class="note">${esc(label)} come from Finnhub, because Yahoo had none just now. Finnhub's free plan covers only part of what Yahoo has.</p>`;
-  const w = typeof d?.altWhy === 'string' ? d.altWhy : d?.altWhy?.finnhub;
-  if (empty && w) return `<p class="note">Finnhub could not fill this in either: ${esc(w)}.</p>`;
+/** Kept for the screens that call it: lists are no longer filled from a second source, so there is nothing to say. */
+export function altNote() {
   return '';
 }

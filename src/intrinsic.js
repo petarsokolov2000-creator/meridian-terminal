@@ -14,7 +14,7 @@ const busy = new Map(); // sym -> Promise
 const waiting = [];
 let running = 0;
 const TTL = 30 * 60000;
-const SLOTS = 2; // each first load is dozens of SEC requests, so only two at a time
+const SLOTS = 2; // each first load is several Yahoo requests, so only two at a time
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const none = (why) => ({ kind: 'none', why });

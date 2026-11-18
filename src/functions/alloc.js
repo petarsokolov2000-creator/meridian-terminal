@@ -126,7 +126,7 @@ export function ttmYear(a) {
   const take = (k, x) => {
     if (x && fin(x.val) && x.basis !== 'FY') {
       y[k] = x.val;
-      y.src[k] = { s: x.src || 'SEC', tag: x.tag, filed: x.filed, period: x.end, item: x.formula };
+      y.src[k] = { s: x.src || 'Yahoo', tag: x.tag, filed: x.filed, period: x.end, item: x.formula };
     } else y.na[k] = x && fin(x.val) ? 'only a fiscal-year figure exists, no 12-month one' : x?.why || 'not reported';
   };
   for (const k of ['ocf', 'netIncome']) take(k, N[k]);
@@ -158,7 +158,7 @@ register({
       ctx.el.innerHTML = `<div class="empty">Where the money goes is only for company stocks (${esc(s.sym)} isn't one).</div>`;
       return;
     }
-    const wait = el('div', 'empty', 'Loading 10-K history from the SEC (first time takes about 10 seconds)…');
+    const wait = el('div', 'empty', 'Loading the annual statements from Yahoo (first time takes a few seconds)…');
     ctx.el.appendChild(wait);
     let gone = false;
     ctx.engine.annual(s.sym).then((a) => {
@@ -166,7 +166,7 @@ register({
       wait.remove();
       render(ctx, a);
     }).catch((err) => {
-      if (!gone) wait.textContent = `Couldn't load the 10-K figures: ${err.message}`;
+      if (!gone) wait.textContent = `Couldn't load the annual figures: ${err.message}`;
     });
     return { destroy: () => { gone = true; } };
   },

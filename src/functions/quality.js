@@ -2,8 +2,7 @@
 // debt load, cash conversion and growth. CAP: what management does with the cash: buybacks or
 // dilution, payouts vs free cash flow, stock-based pay.
 //
-// Data: SEC EDGAR 10-K figures first, then Yahoo and Finnhub for gaps (each fallback cell is
-// marked, see src/sources.js) via /api/annual; beta and the 10-year Treasury from Yahoo. Nothing
+// Data: Yahoo annual statements via /api/annual; beta and the 10-year Treasury from Yahoo. Nothing
 // is estimated: a ratio whose inputs weren't reported is n/a with the reason, and each formula
 // is shown with the latest year's inputs. Banks and insurers
 // get ROE, ROTCE, ROA and the efficiency ratio instead of ROIC, EBITDA and interest coverage.
@@ -220,7 +219,7 @@ function load(ctx, what, render) {
     ctx.el.innerHTML = `<div class="empty">${esc(what)} is only for company stocks (${esc(s.sym)} isn't one).</div>`;
     return;
   }
-  const wait = el('div', 'empty', 'Loading 10-K history from the SEC (first time takes about 10 seconds)…');
+  const wait = el('div', 'empty', 'Loading the annual statements from Yahoo (first time takes a few seconds)…');
   ctx.el.appendChild(wait);
   let gone = false;
   let chart = null;
@@ -233,7 +232,7 @@ function load(ctx, what, render) {
     }
     chart = render(a, det);
   }).catch((err) => {
-    if (!gone) wait.textContent = `Couldn't load the 10-K figures: ${err.message}`;
+    if (!gone) wait.textContent = `Couldn't load the annual figures: ${err.message}`;
   });
   return { destroy: () => { gone = true; chart?.destroy(); } };
 }

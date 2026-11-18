@@ -3,8 +3,8 @@
 // and ✓ / ✗ / n/a. There is deliberately no overall score: the lines aren't equally important,
 // and adding them up would hide that.
 //
-// The numbers come from the same calculations as VAL, DCF, QUAL, CAP, SEG and RISK (SEC 10-K
-// figures, Yahoo prices), so a value here always matches the screen it comes from.
+// The numbers come from the same calculations as VAL, DCF, QUAL, CAP, SEG and RISK (Yahoo figures and prices;
+// the customer and risk lines read the SEC 10-K text), so a value here always matches the screen it comes from.
 
 import { register } from '../registry.js';
 import { num, esc, el, store, save } from '../fmt.js';
@@ -94,7 +94,7 @@ export function checkValues(v, extra) {
   // the years in a window whose inputs came from a fallback source
   const yearsMark = (rows, key, spec = QI) => windowMark(rows.flatMap((r) => {
     const fields = baseFields(r._y, spec[key][0]);
-    const other = [...new Set(fields.map((f) => r._y.src?.[f]?.s))].filter((x) => x && x !== 'SEC');
+    const other = [...new Set(fields.map((f) => r._y.src?.[f]?.s))].filter((x) => x && x !== 'SEC' && x !== 'Yahoo');
     return other.length ? [`FY${r.fy}: ${other.join('+')}`] : [];
   }));
   const at = (fy) => years.find((y) => y.fy === fy);
@@ -204,7 +204,7 @@ register({
       ctx.el.innerHTML = `<div class="empty">The checklist is for company stocks (${esc(s.sym)} isn't one).</div>`;
       return;
     }
-    const wait = el('div', 'empty', 'Loading 10-K history from the SEC (first time takes about 10 seconds)…');
+    const wait = el('div', 'empty', 'Loading the annual statements from Yahoo (first time takes a few seconds)…');
     ctx.el.appendChild(wait);
     let gone = false;
     Promise.all([E.valuation(s.sym), E.details(s.sym).catch(() => null)]).then(([v, det]) => {

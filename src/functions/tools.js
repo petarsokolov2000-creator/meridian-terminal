@@ -143,12 +143,12 @@ const FIELDS = {
   // come from Yahoo's quote, and RSI, beta and volatility appear once a company is opened
   ret: ['1Y %', (i) => (i.light ? i.chg52 : (i.last / i.history[0].c - 1) * 100), 1, 'Price change over the past year'],
   off: ['Off high %', (i) => (i.light ? (i.hi52 ? (i.last / Math.max(i.hi52, i.last) - 1) * 100 : null) : (i.last / hi52(i) - 1) * 100), 1, 'Distance below the 52-week high (0 = at the high)'],
-  rsi: ['RSI', (i) => (i.light ? null : rsiOf(i)), 0, '14-day RSI: under 30 oversold, over 70 overbought'],
+  rsi: ['RSI', (i) => (i.light ? i.rsiNow ?? null : rsiOf(i)), 0, '14-day RSI: under 30 oversold, over 70 overbought'],
   pe: ['P/E', (i) => (i.eps > 0 ? i.last / i.eps : null), 1, 'Price / earnings (left out when earnings are negative)'],
   cap: ['Mkt cap B', (i) => (i.light ? i.marketCap : i.marketCap ?? i.shares * i.last) / 1e9, 1, 'Market value in billions'],
   yld: ['Div yld %', (i) => i.divYield, 2, 'Dividend yield'],
-  beta: ['Beta', (i) => (i.light ? null : i.histBeta), 2, 'Moves with the market: 1 = same, under 1 = calmer'],
-  vol: ['Vol %', (i) => (i.light ? null : i.realVol * 100), 0, 'Volatility: how much it swings in a year'],
+  beta: ['Beta', (i) => i.histBeta ?? null, 2, 'Moves with the market: 1 = same, under 1 = calmer'],
+  vol: ['Vol %', (i) => (i.realVol == null ? null : i.realVol * 100), 0, 'Volatility: how much it swings in a year'],
 };
 const val = (i, f) => (i.light && !i.priced && f !== 'px' ? null : finite(FIELDS[f][1](i)));
 
@@ -222,6 +222,15 @@ register({
     });
     loadMore();
     const moreTimer = E.moreQuotes ? setInterval(loadMore, 60e3) : null;
+    // volatility, beta and RSI of the extra companies: worked out by the server in the background, polled until done
+    let stats = null;
+    let statsTimer = null;
+    const loadStats = () => E.moreStats?.().then((st) => {
+      stats = st;
+      update();
+      if (st.running) statsTimer = setTimeout(loadStats, 6e3);
+    });
+    loadStats();
 
     const bar = el('div', 'toolbar');
     const form = el('div', 'scrn-form');
@@ -313,7 +322,8 @@ register({
         th.textContent = cols[idx].label + (on ? (q.sort.desc ? ' ↓' : ' ↑') : '');
       });
       const loading = E.moreQuotes && !more ? ` · loading prices for ${all.length - E.equities.length} more companies…` : more?.error ? ` · couldn't load the extra companies' prices (${esc(more.error)})` : '';
-      info.innerHTML = `<b>${rows.length} of ${all.length}</b><span class="dim">match${loading} · tap a column to sort · <i>Test</i> = backtest</span>`;
+      const sloading = E.moreStats && stats?.running ? ` · working out Vol %, Beta and RSI for the extra companies (${stats.done} of ${stats.total})…` : E.moreStats && stats?.error ? ` · couldn't load Vol %, Beta and RSI for the extra companies (${esc(stats.error)})` : '';
+      info.innerHTML = `<b>${rows.length} of ${all.length}</b><span class="dim">match${loading}${sloading} · tap a column to sort · <i>Test</i> = backtest</span>`;
       // a long list only renders its first 300 rows (sorting and filtering still use all of them)
       t.set(rows.slice(0, 300).map((i) => Object.assign(i, { key: i.sym, rowCls: '' })));
       if (rows.length > 300) info.insertAdjacentHTML('beforeend', '<span class="dim"> · showing the top 300: narrow it down with a screen or filters</span>');
@@ -321,7 +331,7 @@ register({
     drawBar();
     drawForm();
     update();
-    return { update, every: 2, destroy: () => clearInterval(moreTimer) };
+    return { update, every: 2, destroy: () => { clearInterval(moreTimer); clearTimeout(statsTimer); } };
   },
 });
 

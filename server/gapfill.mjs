@@ -5,14 +5,12 @@
 // answer more reliably:
 //   - the price history (52-week range, moving averages, average volume, 52-week change, beta vs S&P 500),
 //   - the quote endpoint (market cap, share count, P/E, dividend yield),
-//   - the company's reported figures (SEC EDGAR first, then Yahoo statements, then Finnhub; see
-//     fundamentals.mjs) for margins, returns, cash, debt, book value, free cash flow and the multiples,
-//   - Finnhub's ready-made metrics (free key) for whatever is still empty after that.
+//   - the company's reported figures (Yahoo's statements; see fundamentals.mjs) for margins, returns, cash,
+//     debt, book value, free cash flow and the multiples.
 // Every filled figure is listed in stats.src (field -> where it came from), and every figure that stays
 // empty gets a plain-language reason in stats.why. Nothing is invented: a value is only filled when its
 // inputs exist, and Yahoo's own number always wins when it has one.
 
-import { metricStats } from './finnhub-data.mjs';
 
 const fin = (v) => v != null && Number.isFinite(v);
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
@@ -66,11 +64,12 @@ export function reportedStats(a, price) {
   const out = {};
   if (!a?.now?.fields) return out;
   const N = a.now.fields;
+  const base = /^SEC/.test(a.source || '') ? 'SEC' : 'Yahoo'; // where the figures nobody labelled come from
   const v = (k) => N[k]?.val ?? null;
   const set = (k, val, src) => { if (fin(val)) out[k] = { val, src }; };
   const srcOf = (...ks) => {
     const used = [...new Set(ks.map((k) => N[k]?.src).filter(Boolean))];
-    return used.length ? used.join('+') : 'SEC';
+    return used.length ? used.join('+') : base;
   };
   const shares = v('shares');
   const cap = fin(price) && fin(shares) ? price * shares : null;
@@ -112,15 +111,15 @@ export function reportedStats(a, price) {
     if (fin(v('debt')) && eq > 0) set('debtToEquity', (v('debt') / eq) * 100, srcOf('debt', 'equity'));
   }
   if (L) {
-    if (L.grossProfit != null && L.revenue > 0) set('grossMargin', L.grossProfit / L.revenue, 'SEC');
-    else if (L.cogs != null && L.revenue > 0) set('grossMargin', (L.revenue - L.cogs) / L.revenue, 'SEC');
+    if (L.grossProfit != null && L.revenue > 0) set('grossMargin', L.grossProfit / L.revenue, base);
+    else if (L.cogs != null && L.revenue > 0) set('grossMargin', (L.revenue - L.cogs) / L.revenue, base);
     if (L.assets > 0 && fin(ni)) set('roa', ni / L.assets, srcOf('netIncome'));
     if (eq > 0 && fin(ni)) set('roe', ni / eq, srcOf('netIncome', 'equity'));
     if (P && P.revenue > 0) set('revenueGrowth', L.revenue / P.revenue - 1, `FY${L.fy} vs FY${P.fy}`);
     if (P && P.netIncome > 0 && fin(L.netIncome)) set('earningsGrowth', L.netIncome / P.netIncome - 1, `FY${L.fy} vs FY${P.fy}`);
     const q = a.now.balanceEnd || a.now.ttmEnd;
-    if (q) set('mostRecentQuarter', Date.parse(q) / 1000, 'SEC');
-    if (L.end) set('fiscalYearEnd', Date.parse(L.end) / 1000, 'SEC');
+    if (q) set('mostRecentQuarter', Date.parse(q) / 1000, base);
+    if (L.end) set('fiscalYearEnd', Date.parse(L.end) / 1000, base);
   }
   return out;
 }
@@ -171,7 +170,6 @@ export const STAT_FIELDS = [
  * Fill `stats` (may be null/partial). `sources` are lazy loaders that may each fail:
  *   bars(): daily bars of the stock, mktBars(): daily bars of the S&P 500, quote(): normalized Yahoo quote,
  *   annual(): fundamentals.annual result.
- *   finnhub(): Finnhub's /stock/metric object (optional; only asked when something is still empty).
  * Returns { stats, src, why, notes } where stats has every field present (null if truly unavailable).
  */
 export async function fillStats(stats0, symbol, sources) {
@@ -228,31 +226,9 @@ export async function fillStats(stats0, symbol, sources) {
   if (!fin(stats.forwardPE) && fin(stats.forwardEps) && stats.forwardEps > 0 && fin(price)) take('forwardPE', price / stats.forwardEps, 'computed: price ÷ forward EPS');
   if (!fin(stats.dividendYield) && fin(stats.dividendRate) && fin(price) && price > 0) take('dividendYield', stats.dividendRate / price, 'computed: dividend ÷ price');
 
-  // 4. Finnhub's metrics, only when a key is set and something is still empty
-  const ASKABLE = STAT_FIELDS.filter((k) => !['forwardPE', 'forwardEps', 'peg', 'exDividend', 'lastSplit', 'fiscalYearEnd', 'mostRecentQuarter', 'sharesShort', 'shortFloat', 'shortRatio', 'sharesShortPrior', 'float', 'ma50', 'ma200', 'fcf', 'ocf', 'totalCash', 'totalDebt', 'evRevenue', 'evEbitda', 'shares'].includes(k));
-  let finnhubUsed = false;
-  let finnhubAsked = false;
-  if (sources.finnhub && ASKABLE.some((k) => stats[k] == null)) {
-    const m = await settle('Finnhub metrics', () => sources.finnhub());
-    if (m) {
-      finnhubAsked = true;
-      const fs = metricStats(m);
-      for (const [k, val] of Object.entries(fs)) {
-        const before = stats[k];
-        take(k, val, 'Finnhub metrics');
-        if (before == null && stats[k] === val) finnhubUsed = true;
-      }
-    }
-  }
-
   // 5. reasons for what is still empty
-  const ctx = { financial: !!annual?.financial, us: !/\.[A-Z]{1,3}$/.test(symbol), finnhub: !sources.finnhub ? 'off' : finnhubAsked ? 'asked' : 'failed' };
+  const ctx = { financial: !!annual?.financial, us: !/\.[A-Z]{1,3}$/.test(symbol) };
   const why = {};
-  for (const k of STAT_FIELDS) {
-    if (stats[k] != null) continue;
-    const r = whyEmpty(k, stats, ctx);
-    // a free Finnhub key can supply many of these; say so, or say that it was asked and had none
-    why[k] = ASKABLE.includes(k) ? `${r}${ctx.finnhub === 'asked' ? ' (Finnhub has no figure for it either)' : ctx.finnhub === 'failed' ? ' (Finnhub could not be asked just now)' : '. A free Finnhub key can fill this: FINNHUB yourkey'}` : r;
-  }
-  return { stats, src, why, notes, price, finnhubUsed };
+  for (const k of STAT_FIELDS) if (stats[k] == null) why[k] = whyEmpty(k, stats, ctx);
+  return { stats, src, why, notes, price };
 }

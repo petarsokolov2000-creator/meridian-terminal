@@ -495,7 +495,7 @@ class App {
       if (id === 'ais') return this.toast(`${label} key: type AISKEY followed by your key (free at aisstream.io) for ships worldwide in SHIPS; AISKEY OFF removes it. Without one SHIPS shows the Baltic Sea only. STATUS shows whether it is set and works.`);
       const fh = engine.fh;
       if (!fh.configured) return this.toast('No Finnhub key yet. Type FINNHUB followed by your key (free at finnhub.io).');
-      return this.toast(`Finnhub: stream ${fh.stream}, ${fh.streaming} symbols${fh.error ? ` — ${fh.error}` : ''}. Earnings ${fh.earnings ? 'loaded' : fh.earningsError || 'pending'}. Economic calendar: ${fh.eco ? 'loaded' : fh.ecoError || 'pending'}.`);
+      return this.toast(`Finnhub: news and the economic calendar only (prices and company figures all come from Yahoo). Economic calendar: ${fh.eco ? 'loaded' : fh.ecoError || 'pending'}.`);
     }
     const key = /^off$/i.test(arg) ? '' : arg;
     this.toast(key ? `Checking the key with ${label}…` : `Removing the ${label} key…`);

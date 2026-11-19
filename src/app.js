@@ -28,6 +28,7 @@ import './functions/notes.js';
 import './functions/insider.js';
 import './functions/alloc.js';
 import './functions/gaps.js';
+import './functions/verify.js';
 import './functions/ships.js';
 import './functions/preview.js';
 import './functions/prisk.js';

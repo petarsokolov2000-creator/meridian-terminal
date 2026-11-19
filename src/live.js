@@ -576,6 +576,10 @@ export class LiveEngine {
   events(sym) {
     return api(`/api/events?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
+  /** Yahoo's figures compared with the SEC filing (never merged): rows with both values and a verdict. */
+  verify(sym) {
+    return api(`/api/verify?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+  }
   reportDates(sym) {
     return api(`/api/earnings-dates?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }

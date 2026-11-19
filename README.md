@@ -102,6 +102,12 @@ current. Meridian asks Yahoo again every minute and switches back by itself.
 **Your own screens:** in `SCRN`, set filters or a preset, type a name next to **★ Save** and press Enter. Saved screens
 appear as buttons (× deletes one); up to 20, kept in this browser or app.
 
+**Is Yahoo right? `VERIFY`:** `AAPL VERIFY` puts Yahoo's revenue, profit, EPS, cash flow and balance sheet next to the
+same figures in the company's SEC filing, with the gap in %. Up to 2% = same figure (✓), 2-5% = small gap (≈), above 5% = ⚠,
+open `FILE` and trust the filing. `CHECK` shows a one-line verdict from it. The SEC is only compared, never mixed into a
+number, so screens still can't disagree. Limits: US companies filing in US dollars only; per-share figures are skipped
+when a stock split happened after that year.
+
 Add a Finnhub key once with **`FINNHUB yourkey`** in the command line. The server checks the key and saves it to
 `.finnhub-key` on this PC (git-ignored, never sent to the browser or kept in command history). `FINNHUB` shows the
 status; `FINNHUB OFF` removes the key. Alternatively set the `FINNHUB_API_KEY` environment variable.
@@ -209,7 +215,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | News | `NEWS` `CN` `FILE` |
 | Analytics | `OPT` `OVME` `BETA` `VOLA` `CORR` `SCAT` `DCF` `BT` `PRISK` |
 | Trading | `PORT` `MARS` `ALRT` `BOOK` `TAPE` |
-| System | `HELP` `GAPS` |
+| System | `HELP` `GAPS` `VERIFY` |
 
 New in this release, in plain words:
 
@@ -231,6 +237,7 @@ New in this release, in plain words:
   and what each purchase is worth now. Trades under $10,000 are shown but not counted. Selling is never marked as a warning:
   insiders sell for many reasons, they buy for one. `INSIDER WATCH`, `INSIDER PORT` or `INSIDER MARKET` ranks a whole list.
   Limits: Yahoo lists at most the latest 120 filings and does not mark pre-planned (10b5-1) sales.
+- `VERIFY` (also `XCHECK`, `AUDIT`, `TRUST`): `AAPL VERIFY` checks Yahoo's figures against the SEC filing and flags gaps above 5%.
 - `GAPS` (also `NACHECK`, `COVERAGE`): data coverage of one stock (`AAPL GAPS`). Per area (key statistics, analysts and ownership,
   reported figures of the last year, latest 12 months) it shows how many figures exist, which are empty and the reason, and
   how many were filled from a second source. Figures that are often truly absent (dividends, buybacks, forward estimates,

@@ -16,6 +16,7 @@ import { createSec } from './sec.mjs';
 import { MORE_COMPANIES } from '../src/companies.js';
 import { LIVE_EQUITIES } from '../src/live-universe.js';
 import { createFundamentals } from './fundamentals.mjs';
+import { createVerify } from './verify.mjs';
 import { fillStats } from './gapfill.mjs';
 import { createTenK } from './tenk.mjs';
 import { createShips } from './ships.mjs';
@@ -54,6 +55,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   const sec = createSec({ ...opts, getContact: () => keyStore.get('sec') });
   const fundamentals = createFundamentals({ yahoo, rates, kvStore, log });
   const tenk = createTenK({ sec });
+  const verifier = createVerify({ sec, yahoo, log });
   const screenStats = createScreenStats({ yahoo, symbols: MORE_COMPANIES.map((c) => c[0]), log });
   // peer candidates: Meridian's companies in the same sector, largest first (built-in list first)
   const SECTOR_OF = new Map([...LIVE_EQUITIES.map((e) => [e[0], e[2]]), ...MORE_COMPANIES.map((c) => [c[0], c[2]])]);
@@ -320,6 +322,8 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
     },
     // Dates of the company's earnings releases (SEC 8-K item 2.02), for the earnings preview.
     '/api/earnings-dates': async (q) => sec.earningsDates(needSym(q)),
+    // Do Yahoo's figures match the company's SEC filing? Compare only; the two are never merged.
+    '/api/verify': async (q) => verifier.verify(needSym(q)),
     // Quotes for the 1,000+ extra companies (src/companies.js), for the screener: one Yahoo
     // request per 50 companies, at most once a minute, and only the fields the screener uses.
     '/api/more-quotes': async () => moreQuotes(),

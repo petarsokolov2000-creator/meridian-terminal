@@ -11,6 +11,7 @@ import { num, esc, el, store, save } from '../fmt.js';
 import { help } from '../glossary.js';
 import { qualityRows, capitalRows, cagr, wacc, Q_INPUTS, Q_INPUTS_FIN, capInputs } from './quality.js';
 import { dcf, dcfDefaults, NOW_INPUTS } from './valuation.js';
+import { verdictLine } from './verify.js';
 import { mark, why, na, nowMark, windowMark, baseFields, statusLine } from '../sources.js';
 
 const fin = (v) => v != null && Number.isFinite(v);
@@ -282,6 +283,12 @@ register({
         }).finally(() => !gone && draw());
       }
       note.innerHTML = `${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices, beta and Treasury yield: Yahoo Finance; customers and segments: the latest 10-K. Each line uses the same calculation as ${v.financial ? 'VAL and QUAL' : 'VAL, DCF, QUAL, CAP and SEG'} (tap ? for the definition). The default thresholds are common rules of thumb, not recommendations; they suit some industries better than others, so change them to your own. <b>There is no overall score on purpose:</b> the lines aren't equally important, and a stock can fail several and still be a good investment (or pass them all and be a poor one). n/a means the data needed isn't reported.`;
+      // Are Yahoo's figures the same as the SEC filing? (a one-line verdict; nothing from the SEC is mixed in)
+      E.verify(s.sym).then((vr) => {
+        const line = verdictLine(vr);
+        if (gone || !line) return;
+        note.insertAdjacentHTML('afterbegin', `<span class="${line.cls}">${esc(line.text)}</span><br>`);
+      }).catch(() => {});
     }).catch((err) => {
       if (!gone) wait.textContent = `Couldn't load the checklist data: ${err.message}`;
     });

@@ -74,6 +74,7 @@ register({
         ['Version', versionText(d, app)],
         ['Runs on', hostText(d, app)],
         ['Data', E.mode === 'live' ? 'real' : 'simulation <span class="dim small">(MODE LIVE for real data)</span>'],
+        ...(d.stale?.count ? [['Saved copies', d.stale.active ? `<span class="st-bad">Yahoo is refusing some requests: company figures are being shown from a saved copy (up to ${Math.max(1, Math.round(d.stale.oldestMs / 3600e3))} h old) for ${d.stale.count} request${d.stale.count === 1 ? '' : 's'} since Meridian started.</span>` : `<span class="dim">${d.stale.count} request${d.stale.count === 1 ? '' : 's'} were answered from a saved copy while Yahoo was refusing (last ${when(new Date(d.stale.lastAt).toISOString())}). Everything is live again now.</span>`]] : []),
         ['Finnhub key', d.keys.finnhub ? 'set' : '<span class="dim">not set (optional)</span>'],
         ['FRED key', d.keys.fred ? 'set' : '<span class="dim">not set (optional)</span>'],
         ['AISStream key', d.keys.ais ? 'set' : '<span class="dim">not set (optional; SHIPS then shows the Baltic only)</span>'],

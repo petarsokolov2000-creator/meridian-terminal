@@ -235,7 +235,22 @@ register({
     const bar = el('div', 'toolbar');
     const form = el('div', 'scrn-form');
     const info = el('div', 'qstrip scrn-info');
-    ctx.el.append(bar, form, info);
+    // your own screens: the current filters saved under a name (kept in this browser / app, up to 20)
+    const savedBar = el('div', 'toolbar scrn-saved');
+    const nameBox = el('input', 'scrn-name');
+    nameBox.placeholder = 'name this screen…';
+    nameBox.maxLength = 24;
+    const saveBtn = el('button', 'tb', '★ Save');
+    saveBtn.title = 'Save the current filters and sorting under this name';
+    const chips = el('span', 'scrn-chips');
+    savedBar.append(nameBox, saveBtn, chips);
+    const drawSaved = () => {
+      const list = store('scrn-saved', []);
+      chips.innerHTML = list.length
+        ? list.map((s, i) => `<span class="scrn-chip"><button class="tb" data-saved="${i}" title="Apply this screen">${esc(s.name)}</button><button class="tb" data-del="${i}" title="Delete this saved screen" aria-label="Delete ${esc(s.name)}">×</button></span>`).join('')
+        : '<span class="dim small">No saved screens yet: set filters, type a name and press Save.</span>';
+    };
+    ctx.el.append(bar, savedBar, form, info);
     // The filter boxes fold away (on phones by default) behind a button that counts the active ones.
     let open = store('scrn-open', window.innerWidth > 900);
     const active = () => Object.values(q.min).filter((v) => v != null).length + Object.values(q.max).filter((v) => v != null).length + (q.sector ? 1 : 0) + (q.region ? 1 : 0);
@@ -251,6 +266,36 @@ register({
         Object.entries(FIELDS).filter(([k]) => k !== 'px').map(([k, [label, , , help]]) => `<label title="${esc(help)}">${esc(label)}
           <span><input type="number" inputmode="decimal" step="any" placeholder="min" data-min="${k}" value="${q.min[k] ?? ''}"><input type="number" inputmode="decimal" step="any" placeholder="max" data-max="${k}" value="${q.max[k] ?? ''}"></span></label>`).join('');
     };
+    drawSaved();
+    saveBtn.addEventListener('click', () => {
+      const name = nameBox.value.trim();
+      if (!name) return ctx.app.toast('Type a name for this screen first.');
+      const list = store('scrn-saved', []).filter((s) => s.name.toLowerCase() !== name.toLowerCase());
+      if (list.length >= 20) return ctx.app.toast('You can keep up to 20 saved screens: delete one first.');
+      list.push({ name, q: { sector: q.sector || '', region: q.region || '', min: { ...q.min }, max: { ...q.max }, sort: { ...q.sort } } });
+      save('scrn-saved', list);
+      nameBox.value = '';
+      drawSaved();
+      ctx.app.toast(`Saved "${name}".`, 'ok');
+    });
+    nameBox.addEventListener('keydown', (e) => e.key === 'Enter' && saveBtn.click());
+    chips.addEventListener('click', (e) => {
+      const list = store('scrn-saved', []);
+      const del = e.target.closest('[data-del]');
+      if (del) {
+        list.splice(+del.dataset.del, 1);
+        save('scrn-saved', list);
+        return drawSaved();
+      }
+      const b = e.target.closest('[data-saved]');
+      const item = b && list[+b.dataset.saved];
+      if (!item) return;
+      Object.assign(q, blank(), { preset: null, sector: item.q.sector || '', region: item.q.region || '', min: { ...item.q.min }, max: { ...item.q.max }, sort: { ...item.q.sort } });
+      persist();
+      drawBar();
+      drawForm();
+      update();
+    });
     bar.addEventListener('click', (e) => {
       if (e.target.closest('[data-toggle]')) {
         open = !open;

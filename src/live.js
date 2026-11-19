@@ -43,6 +43,15 @@ async function api(path) {
   return body;
 }
 
+/** Yahoo refused recently and company figures came from saved copies (server keeps count). null when unknown. */
+let staleNow = false;
+export async function pollStale() {
+  try {
+    staleNow = !!(await api('/api/status')).stale?.active;
+  } catch {}
+  return staleNow;
+}
+
 export async function liveAvailable() {
   try {
     const s = await api('/api/status');
@@ -143,6 +152,7 @@ export class LiveEngine {
     this.timers = [
       setInterval(() => this.loadRates().catch(() => {}), 60 * 60000),
       setInterval(() => this.refreshQuotes().catch(() => {}), QUOTE_MS),
+      setInterval(() => pollStale(), 60e3),
       setInterval(() => this.refreshMarketNews().catch(() => {}), NEWS_MS),
     ];
     return this;
@@ -628,6 +638,7 @@ export class LiveEngine {
     if (this.status.error) return { text: this.status.quotesAt ? 'STALE DATA' : 'DATA ERROR', title: this.status.error, cls: 'err' };
     const age = Math.round((Date.now() - this.status.quotesAt) / 1000);
     const yahoo = `Prices and company figures all come from Yahoo Finance; quotes refresh every ${QUOTE_MS / 1000}s. Exchange data may be delayed up to 15–20 min.${this.status.degraded ? ' Quote API refused; using slower chart fallback.' : ''}`;
+    if (staleNow) return { text: `YAHOO · ${age}s · SAVED FIGURES`, title: `Yahoo is refusing some requests, so company figures (statements, profile, details) are shown from a copy saved earlier. Prices are still live. ${yahoo}`, cls: 'warn' };
     return { text: `YAHOO · ${age}s`, title: yahoo, cls: this.status.degraded ? 'warn' : 'ok' };
   }
 

@@ -607,3 +607,12 @@ a.doc:hover { text-decoration: underline; }
 .dc-grid .dc-tot td { border-top: 1px solid var(--line, #333); }
 .mc-curve { width: 100%; max-width: 420px; height: auto; display: block; }
 .mc-tbl .mc-read { white-space: normal; min-width: 260px; max-width: 520px; line-height: 1.35; }
+
+/* SCRN: saved screens */
+.scrn-saved { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scrn-name { width: 150px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 2px; padding: 3px 6px; font: inherit; font-size: 12px; }
+.scrn-name:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.scrn-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.scrn-chip { display: inline-flex; }
+.scrn-chip .tb:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.scrn-chip .tb:last-child { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; padding-inline: 6px; }

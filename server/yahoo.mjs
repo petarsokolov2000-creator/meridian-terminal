@@ -67,16 +67,34 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     }
   }
 
-  function cached(key, ttl, fn) {
+  // Slow data (statements, profile, details, events, ETF holdings, filings) is also kept as "last good". If Yahoo
+  // then refuses (HTTP 429, outage), the last good copy is served for up to `keep` ms and the fact is counted, so
+  // screens keep working and STATUS / the top bar can say that some figures are saved ones. Prices and option
+  // chains never take part: an old price must not pass as a current one.
+  const WEEK = 7 * 24 * 3600e3;
+  const lastGood = new Map(); // key -> { at, v }
+  const stale = { count: 0, lastAt: 0, oldestMs: 0 };
+  function cached(key, ttl, fn, keep = 0) {
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < ttl) return hit.p;
-    const p = fn().catch((err) => {
+    const p = fn().then((v) => {
+      if (keep) lastGood.set(key, { at: Date.now(), v });
+      return v;
+    }, (err) => {
       cache.delete(key);
-      throw err;
+      const g = keep && lastGood.get(key);
+      if (!g || Date.now() - g.at > keep) throw err;
+      stale.count++;
+      stale.lastAt = Date.now();
+      stale.oldestMs = Math.max(stale.oldestMs, Date.now() - g.at);
+      cache.set(key, { at: Date.now() - ttl + 60e3, p: Promise.resolve(g.v) }); // ask Yahoo again in a minute
+      return g.v;
     });
     cache.set(key, { at: Date.now(), p });
     return p;
   }
+  /** What was served from saved copies lately: { count, lastAt, oldestMs }. */
+  const staleInfo = () => ({ ...stale, active: stale.lastAt > 0 && Date.now() - stale.lastAt < 10 * 60e3 });
 
   const raw = (v) => (v && typeof v === 'object' ? (Number.isFinite(v.raw) ? v.raw : null) : Number.isFinite(v) ? v : null);
   const n = (v) => (Number.isFinite(v) ? v : null);
@@ -217,7 +235,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         earningsDates: (r.calendarEvents?.earnings?.earningsDate || []).map(raw).filter(Boolean).map((s) => s * 1000),
         epsEstimate: raw(r.calendarEvents?.earnings?.earningsAverage), revenueEstimate: raw(r.calendarEvents?.earnings?.revenueAverage),
       };
-    });
+    }, WEEK);
   }
 
   // ---- financial statements, earnings, ownership, dividends -----------------------------------
@@ -270,7 +288,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       }
       if (!periods.size) throw Object.assign(new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404), { http: 'empty' });
       return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency, layout: STATEMENTS };
-    });
+    }, WEEK);
   }
 
   // SEC filings as Yahoo lists them: the backup for FILE when the SEC itself refuses.
@@ -284,7 +302,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       })).filter((f) => f.url);
       if (!list.length) throw new YahooError(`Yahoo lists no SEC filings for ${symbol}`, 404);
       return { company: r?.quoteType?.longName || r?.quoteType?.shortName || symbol, cik: null, filings: list, edgar: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol)}`, source: 'Yahoo Finance' };
-    });
+    }, WEEK);
   }
 
   // ETF facts: expense ratio, assets, top holdings and sector weights (Yahoo lists the top 10).
@@ -308,7 +326,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         holdings: (th.holdings || []).map((h) => ({ symbol: h.symbol || null, name: h.holdingName || h.symbol, weight: raw(h.holdingPercent) })).filter((h) => h.weight != null),
         sectors, stock: raw(th.stockPosition), bond: raw(th.bondPosition), cash: raw(th.cashPosition),
       };
-    });
+    }, WEEK);
   }
 
   // Earnings history and estimates, ownership, insider trades and key statistics.
@@ -351,7 +369,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
           fiscalYearEnd: raw(ks.lastFiscalYearEnd), mostRecentQuarter: raw(ks.mostRecentQuarter),
         },
       };
-    });
+    }, WEEK);
   }
 
   // Every dividend and split on record (the chart endpoint's corporate-action events).
@@ -364,7 +382,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
       const dividends = Object.values(ev.dividends || {}).map((d) => ({ date: d.date, amount: n(d.amount) })).filter((d) => d.amount != null).sort((a, b) => b.date - a.date);
       const splits = Object.values(ev.splits || {}).map((x) => ({ date: x.date, ratio: x.splitRatio || `${x.numerator}:${x.denominator}`, factor: n(x.numerator) / (n(x.denominator) || 1) })).sort((a, b) => b.date - a.date);
       return { dividends, splits, currency: res.meta?.currency || null, price: n(res.meta?.regularMarketPrice) };
-    });
+    }, WEEK);
   }
 
   // ---- options -----------------------------------------------------------------------------
@@ -415,7 +433,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
     },
   };
 
-  return { chart, quotes, news, search, profile, options, statements, details, events, filings, etf, normalizeChart, normalizeQuote, probe };
+  return { staleInfo, chart, quotes, news, search, profile, options, statements, details, events, filings, etf, normalizeChart, normalizeQuote, probe };
 }
 
 export async function pool(items, size, fn) {

@@ -170,7 +170,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
         at: new Date().toISOString(), mock,
         version: { current, latest, updateAvailable: !!(current && latest && latest !== current) },
         keys: { ...Object.fromEntries(Object.keys(KEYS).map((k) => [k, !!keyStore.get(k)])), secContact: !!keyStore.get('sec') },
-        checks, host,
+        checks, host, stale: yahoo.staleInfo(),
       };
     })();
     diagCache = { at: Date.now(), p };
@@ -196,7 +196,7 @@ export function createBackend({ fetchImpl = fetch, WebSocketImpl = globalThis.We
   // ---- GET routes ----------------------------------------------------------------------------
 
   const routes = {
-    '/api/status': async () => ({ ok: true, live: true, mock }),
+    '/api/status': async () => ({ ok: true, live: true, mock, stale: yahoo.staleInfo() }),
     '/api/history': async () => allHistory(),
     '/api/search': async (q) => {
       const term = String(q.get('q') || '').trim().slice(0, 40);

@@ -94,6 +94,14 @@ Other sources are used only for things that don't overlap with the numbers above
 (`FILE`, `SEG`, `RISK`), FRED for macro series, and Finnhub (optional) for **news with summaries** and the **economic
 calendar** (`ECO`, a paid Finnhub plan). Finnhub no longer provides prices, earnings or company figures.
 
+**If Yahoo goes down for a while:** company figures that change slowly (profile, statements, filings, ETF data, events)
+are served from the last good copy for up to 7 days. The top bar then says **SAVED FIGURES** and `STATUS` shows
+"Saved copies" with how old they are. Prices and option chains are never saved copies, so an old price can't pass as
+current. Meridian asks Yahoo again every minute and switches back by itself.
+
+**Your own screens:** in `SCRN`, set filters or a preset, type a name next to **★ Save** and press Enter. Saved screens
+appear as buttons (× deletes one); up to 20, kept in this browser or app.
+
 Add a Finnhub key once with **`FINNHUB yourkey`** in the command line. The server checks the key and saves it to
 `.finnhub-key` on this PC (git-ignored, never sent to the browser or kept in command history). `FINNHUB` shows the
 status; `FINNHUB OFF` removes the key. Alternatively set the `FINNHUB_API_KEY` environment variable.

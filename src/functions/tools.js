@@ -7,6 +7,7 @@ import { logReturns, corr } from '../studies.js';
 import { SECTORS } from '../universe.js';
 import * as notify from '../notify.js';
 import { hiLoOf } from '../metrics.js';
+import { peek, isStock, fairOf } from '../intrinsic.js';
 
 register({
   code: 'NEWS', aliases: ['TOP', 'N', 'NI'], name: 'News headlines', cat: 'News',
@@ -149,6 +150,9 @@ const FIELDS = {
   yld: ['Div yld %', (i) => i.divYield, 2, 'Dividend yield'],
   beta: ['Beta', (i) => i.histBeta ?? null, 2, 'Moves with the market: 1 = same, under 1 = calmer'],
   vol: ['Vol %', (i) => (i.realVol == null ? null : i.realVol * 100), 0, 'Volatility: how much it swings in a year'],
+  // Fair price: an estimate from a model (base-case DCF; Graham number for banks and insurers), loaded on demand with the ◎ Fair price button
+  fair: ['Fair price', (i) => fairOf(i.sym, i.last).fair, 2, 'Model estimate of what one share is worth: base-case DCF (banks and insurers: Graham number). An estimate from stated assumptions, not a fact.'],
+  upside: ['Upside %', (i) => fairOf(i.sym, i.last).upside, 0, 'Fair price vs the price: + means the price is below the model estimate, − above. Only filled for stocks whose fair price has been loaded (◎ Fair price button).'],
 };
 const val = (i, f) => (i.light && !i.priced && f !== 'px' ? null : finite(FIELDS[f][1](i)));
 
@@ -243,7 +247,25 @@ register({
     const saveBtn = el('button', 'tb', '★ Save');
     saveBtn.title = 'Save the current filters and sorting under this name';
     const chips = el('span', 'scrn-chips');
+    // Fair price: a model estimate per stock. It needs each company's filings, so it is loaded on demand for the 40 biggest stocks that pass the filters.
+    let fairOn = E.mode === 'live' && store('scrn-fair', false);
+    const fairBtn = el('button', 'tb', '');
+    fairBtn.title = 'Load a model-based fair price for the 40 biggest stocks that pass the filters (base-case DCF; banks and insurers: Graham number). Takes a while: every company needs its financial statements.';
+    const drawFair = () => {
+      fairBtn.textContent = `◎ Fair price: ${fairOn ? 'on' : 'off'}`;
+      fairBtn.classList.toggle('on', fairOn);
+    };
+    drawFair();
+    const fairTried = new Set();
+    let fairTimer = null;
     savedBar.append(nameBox, saveBtn, chips);
+    if (E.mode === 'live') savedBar.append(fairBtn);
+    fairBtn.addEventListener('click', () => {
+      fairOn = !fairOn;
+      save('scrn-fair', fairOn);
+      drawFair();
+      update();
+    });
     const drawSaved = () => {
       const list = store('scrn-saved', []);
       chips.innerHTML = list.length
@@ -263,7 +285,7 @@ register({
       const opt = (list, cur) => list.map((x) => `<option value="${esc(x)}" ${x.toLowerCase() === String(cur).toLowerCase() ? 'selected' : ''}>${esc(x)}</option>`).join('');
       form.innerHTML = `<label class="wide">Sector <select data-sel="sector"><option value="">Any</option>${opt(sectors, q.sector)}</select></label>
         <label class="wide">Region <select data-sel="region"><option value="">Any</option>${opt(regions, q.region)}</select></label>` +
-        Object.entries(FIELDS).filter(([k]) => k !== 'px').map(([k, [label, , , help]]) => `<label title="${esc(help)}">${esc(label)}
+        Object.entries(FIELDS).filter(([k]) => k !== 'px' && k !== 'fair' && (k !== 'upside' || E.mode === 'live')).map(([k, [label, , , help]]) => `<label title="${esc(help)}">${esc(label)}
           <span><input type="number" inputmode="decimal" step="any" placeholder="min" data-min="${k}" value="${q.min[k] ?? ''}"><input type="number" inputmode="decimal" step="any" placeholder="max" data-max="${k}" value="${q.max[k] ?? ''}"></span></label>`).join('');
     };
     drawSaved();
@@ -324,13 +346,13 @@ register({
       update();
     });
 
-    const keys = ['chg', 'ret', 'off', 'rsi', 'pe', 'cap', 'yld', 'beta', 'vol'];
+    const keys = ['chg', 'ret', 'off', 'rsi', 'pe', 'cap', 'yld', 'beta', 'vol', ...(E.mode === 'live' ? ['fair', 'upside'] : [])];
     const t = new LiveTable(ctx.el, [
       { label: 'Ticker', value: (i) => secLink(i), cls: 'l' },
       { label: 'Name', value: (i) => esc(i.name), cls: 'l dim name' },
       { label: 'Sector', value: (i) => esc(i.sector), cls: 'l dim scrn-sector' },
       { label: 'Last', value: (i) => px(i), cls: 'r', flash: (i) => i.last, sort: 'px' },
-      ...keys.map((k) => ({ label: FIELDS[k][0], title: FIELDS[k][3], sort: k, value: (i) => (val(i, k) == null ? '<span class="dim">—</span>' : num(val(i, k), FIELDS[k][2])), cls: 'r', cellCls: k === 'chg' || k === 'ret' || k === 'off' ? (i) => dir(val(i, k)) : undefined })),
+      ...keys.map((k) => ({ label: FIELDS[k][0], title: FIELDS[k][3], sort: k, value: (i) => (val(i, k) == null ? '<span class="dim">—</span>' : num(val(i, k), FIELDS[k][2])), cls: 'r', cellCls: k === 'chg' || k === 'ret' || k === 'off' || k === 'upside' ? (i) => dir(val(i, k)) : undefined })),
       { label: '', value: (i) => `<a href="#" class="tb bt-link" data-bt="${esc(i.sym)}" title="Backtest a trading rule on ${esc(i.sym)}">Test ›</a>`, cls: 'r' },
     ], { onRow: (k) => ctx.app.load(k) });
     const cols = t.cols;
@@ -355,6 +377,20 @@ register({
       const f = q.sort.field;
       // stocks with no value for the sort column go last whichever way it's sorted
       const all = list();
+      // fair price: the 40 biggest stocks that pass the filters (leaving the fair-price filters out, which can't match before it is loaded)
+      let fairNote = '';
+      if (fairOn) {
+        const strip = (o) => { const c = { ...o }; delete c.upside; delete c.fair; return c; };
+        const cand = applyScreen(all, { ...q, min: strip(q.min), max: strip(q.max) }).filter((i) => isStock(E, i)).sort((a, b) => (val(b, 'cap') ?? 0) - (val(a, 'cap') ?? 0)).slice(0, 40);
+        let got = 0;
+        for (const i of cand) {
+          if (fairOf(i.sym, i.last).fair != null) got++;
+          if (fairTried.has(i.sym)) continue;
+          fairTried.add(i.sym);
+          peek(E, i.sym, () => { clearTimeout(fairTimer); fairTimer = setTimeout(update, 500); });
+        }
+        fairNote = ` · fair price: ${got} of ${cand.length} loaded (the ${cand.length < 40 ? '' : '40 biggest '}stocks passing the filters; banks/insurers use the Graham number; "—" = model has no number)`;
+      }
       const rows = applyScreen(all, q).sort((a, b) => {
         const x = val(a, f);
         const y = val(b, f);
@@ -368,7 +404,7 @@ register({
       });
       const loading = E.moreQuotes && !more ? ` · loading prices for ${all.length - E.equities.length} more companies…` : more?.error ? ` · couldn't load the extra companies' prices (${esc(more.error)})` : '';
       const sloading = E.moreStats && stats?.running ? ` · working out Vol %, Beta and RSI for the extra companies (${stats.done} of ${stats.total})…` : E.moreStats && stats?.error ? ` · couldn't load Vol %, Beta and RSI for the extra companies (${esc(stats.error)})` : '';
-      info.innerHTML = `<b>${rows.length} of ${all.length}</b><span class="dim">match${loading}${sloading} · tap a column to sort · <i>Test</i> = backtest</span>`;
+      info.innerHTML = `<b>${rows.length} of ${all.length}</b><span class="dim">match${loading}${sloading}${fairNote} · tap a column to sort · <i>Test</i> = backtest</span>`;
       // a long list only renders its first 300 rows (sorting and filtering still use all of them)
       t.set(rows.slice(0, 300).map((i) => Object.assign(i, { key: i.sym, rowCls: '' })));
       if (rows.length > 300) info.insertAdjacentHTML('beforeend', '<span class="dim"> · showing the top 300: narrow it down with a screen or filters</span>');
@@ -376,7 +412,7 @@ register({
     drawBar();
     drawForm();
     update();
-    return { update, every: 2, destroy: () => { clearInterval(moreTimer); clearTimeout(statsTimer); } };
+    return { update, every: 2, destroy: () => { clearInterval(moreTimer); clearTimeout(statsTimer); clearTimeout(fairTimer); } };
   },
 });
 

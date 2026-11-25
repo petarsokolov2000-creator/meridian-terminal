@@ -10,6 +10,7 @@ import { register } from '../registry.js';
 import { num, big, esc, el, dir, store, save } from '../fmt.js';
 import { XYChart } from '../chart.js';
 import { help } from '../glossary.js';
+import { showVerdict } from './verify.js';
 import { na, nowMark, nowLines, windowMark, srcOnly, statusLine, mark, why } from '../sources.js';
 
 const NA = '<span class="dim">n/a</span>';
@@ -74,6 +75,7 @@ register({
         ['Treated as', v.financial ? 'bank / insurer' : 'operating company'],
       ].map(([a, b]) => `<div><span class="dim">${a}</span><b>${b}</b></div>`).join('');
       ctx.el.appendChild(head);
+      showVerdict(ctx.el, E, s.sym, () => gone);
       if (v.currencyMismatch) ctx.el.appendChild(el('div', 'empty', esc(v.currencyMismatch)));
       const fxn = fxNotice(v);
       if (fxn) {
@@ -95,6 +97,9 @@ register({
       const note = el('p', 'note');
       ctx.el.appendChild(note);
 
+      const spanOf = v.stats[keys[0]]?.y5;
+      const hl = spanOf && !spanOf.short ? `${spanOf.span}y` : '5y';
+      const long10 = keys.some((k) => v.stats[k]?.y10 && !v.stats[k].y10.short);
       const range = (st) => (st.short ? `<span class="dim">n/a (${v.years.length} yr${v.years.length === 1 ? '' : 's'} of data)</span>` : st.min == null ? NA : `${fmt(st.k, st.min)} – ${fmt(st.k, st.max)}`);
       const fmt = (k, val) => METRICS[k][1](val);
       const peerMedian = (k) => {
@@ -110,13 +115,13 @@ register({
         return `<span class="${cheap ? 'up' : 'down'}" title="${cheap ? 'cheaper' : 'more expensive'} than the reference">${d > 0 ? '+' : ''}${num(d * 100, 0)}%</span>`;
       };
       const drawTable = () => {
-        table.innerHTML = `<table class="tbl val-tbl"><thead><tr><th class="l">Metric</th><th class="r">Now</th><th class="r">5y median${help('median5y')}</th><th class="r">5y range</th><th class="r">10y median</th><th class="r">10y range</th><th class="r">Peer median${help('peers')}</th><th class="r" title="Now vs the 5-year median (green = cheaper)">vs 5y</th><th class="r" title="Now vs the peer median (green = cheaper)">vs peers</th></tr></thead><tbody>
+        table.innerHTML = `<table class="tbl val-tbl"><thead><tr><th class="l">Metric</th><th class="r">Now</th><th class="r">${hl} median${help('median5y')}</th><th class="r">${hl} range</th>${long10 ? '<th class="r">10y median</th><th class="r">10y range</th>' : ''}<th class="r">Peer median${help('peers')}</th><th class="r" title="Now vs the ${hl} median (green = cheaper)">vs ${hl}</th><th class="r" title="Now vs the peer median (green = cheaper)">vs peers</th></tr></thead><tbody>
           ${keys.map((k) => {
             const st = v.stats[k];
-            const win = (w, n) => (w.short ? NA : `${fmt(k, w.median)}${windowMark(w.src)}${w.n < n ? ` <span class="dim small" title="Only ${w.n} of the last ${n} fiscal years had every input for this multiple">${w.n}/${n} yrs</span>` : ''}`);
+            const win = (w) => (w.short ? NA : `${fmt(k, w.median)}${windowMark(w.src)}${w.n < w.span ? ` <span class="dim small" title="Only ${w.n} of the last ${w.span} fiscal years had every input for this multiple">${w.n}/${w.span} yrs</span>` : ''}`);
             return `<tr data-k="${k}" class="${k === sel ? 'self' : ''}" style="cursor:pointer"><td class="l">${METRICS[k][0]}${help(k)}</td>
               <td class="r">${cur[k] == null ? na(cur.meta?.[k]?.why) : `<b>${fmt(k, cur[k])}</b>${nowMark(N, NOW_INPUTS[k], cur.meta?.[k])}`}</td>
-              <td class="r">${win(st.y5, 5)}</td><td class="r">${range({ ...st.y5, k })}</td><td class="r">${win(st.y10, 10)}</td><td class="r">${range({ ...st.y10, k })}</td>
+              <td class="r">${win(st.y5)}</td><td class="r">${range({ ...st.y5, k })}</td>${long10 ? `<td class="r">${win(st.y10)}</td><td class="r">${range({ ...st.y10, k })}</td>` : ''}
               <td class="r">${peerState.data ? fmt(k, peerMedian(k)) : '<span class="dim">…</span>'}</td><td class="r">${st.y5.short ? NA : vs(cur[k], st.y5.median, k)}</td><td class="r">${vs(cur[k], peerMedian(k), k)}</td></tr>`;
           }).join('')}</tbody></table>`;
       };
@@ -231,7 +236,7 @@ register({
         if (e.key === 'Enter' && e.target.matches('[data-add]')) peersBox.querySelector('[data-addbtn]').click();
       });
 
-      note.innerHTML = `${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices: ${esc(v.priceSource)}. "Now" = today's price with the last 12 months (latest fiscal year + the 10-Q year to date − the same months a year earlier) and the latest balance sheet, to match KEYS; "FY" marks a figure where only the fiscal year was available. History = the price at each fiscal year end with that year's figures, which were published about 1–2 months later. Medians and ranges use only the years available: a 10-year figure needs 10 fiscal years, otherwise n/a. Per-share figures are adjusted for stock splits${v.splits.length ? ` (${v.splits.map((sp) => `${esc(sp.ratio)} on ${sp.date}`).join(', ')})` : ''}. Negative earnings or cash flow give n/a for that multiple.`;
+      note.innerHTML = `${statusLine(v.status)}<br>Sources: ${esc(v.source)}, latest filing ${esc(v.asOf)}; prices: ${esc(v.priceSource)}. "Now" = today's price with the last 12 months (latest fiscal year + the 10-Q year to date − the same months a year earlier) and the latest balance sheet, to match KEYS; "FY" marks a figure where only the fiscal year was available. History = the price at each fiscal year end with that year's figures, which were published about 1–2 months later. Medians and ranges cover the fiscal years Yahoo provides (usually about 4), so the column is labelled with the real number of years; a separate 10-year column only appears when at least 6 years exist. Nothing is padded with estimates. Per-share figures are adjusted for stock splits${v.splits.length ? ` (${v.splits.map((sp) => `${esc(sp.ratio)} on ${sp.date}`).join(', ')})` : ''}. Negative earnings or cash flow give n/a for that multiple.`;
       drawTable();
       drawChart();
       drawPeers();
@@ -384,6 +389,7 @@ register({
       const notes = el('div', 'val-formulas');
       const fxBox = el('div');
       fxBox.innerHTML = fxNotice(v, true);
+      showVerdict(ctx.el, E, s.sym, () => gone);
       ctx.el.append(fxBox, form, out, sens, detail, notes);
       const P = (v2) => (v2 == null ? '' : (v2 * 100).toFixed(1));
       const drawForm = () => {

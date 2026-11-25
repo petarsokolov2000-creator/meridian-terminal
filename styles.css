@@ -616,3 +616,6 @@ a.doc:hover { text-decoration: underline; }
 .scrn-chip { display: inline-flex; }
 .scrn-chip .tb:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .scrn-chip .tb:last-child { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; padding-inline: 6px; }
+
+
+.verify-line{margin:6px 0;font-size:12px}

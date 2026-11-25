@@ -12,6 +12,7 @@ import { register } from '../registry.js';
 import { num, secLink, esc, el, store, save } from '../fmt.js';
 import { smaOf, retOf, hiLoOf, rsiOf } from '../metrics.js';
 import { loadBook } from './tools.js';
+import { peek, isStock, fairOf } from '../intrinsic.js';
 
 const fin = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const pc = (v) => (v == null ? null : v * 100);
@@ -41,6 +42,8 @@ export const FIELDS = {
   cap: ['Mkt cap B', 'Market value in billions', (i) => { const c = i.marketCap ?? i.shares * i.last; return fin(c) ? c / 1e9 : null; }],
   yld: ['Div yld %', 'Dividend yield, %', (i) => fin(i.divYield)],
   volume: ['Volume', 'Shares traded today', (i) => fin(i.volume)],
+  fair: ['Fair price', 'Model estimate of what a share is worth: base-case DCF (banks and insurers: Graham number). Loaded on demand for the 40 biggest stocks of the query; an estimate, not a fact', (i) => fairOf(i.sym, i.last).fair],
+  upside: ['Upside %', 'Fair price vs price, %: + = price below the model estimate. Only for stocks whose fair price has loaded', (i) => fairOf(i.sym, i.last).upside],
   volx: ['Vol × avg', 'Today\'s volume compared with the usual daily volume', (i) => (i.adv > 0 && i.volume > 0 ? i.volume / i.adv : null)],
 };
 const FUNCS = {
@@ -256,6 +259,7 @@ const EXAMPLES = [
   ['Oversold tech', 'TECHNOLOGY: px, rsi, vs200, ret3m WHERE rsi < 40 SORT rsi ASC'],
   ['Near 52-week highs', 'US: px, offhigh, ret3m WHERE offhigh > -3 SORT offhigh DESC TOP 25'],
   ['Return per unit of risk', 'ALL: px, ret6m, vol, ret6m / vol AS ratio WHERE vol > 0 SORT ratio DESC TOP 15'],
+  ['Below fair price', 'WATCH: px, fair, upside WHERE upside > 15 SORT upside DESC'],
   ['My watchlist', 'WATCH: px, chg, ret1m, offhigh, rsi'],
   ['My portfolio', 'PORT: px, chg, ret1m, vs50, vs200'],
 ];
@@ -274,17 +278,38 @@ register({
       <div class="bql-out"></div>
       <details class="bql-help"><summary>Fields and syntax</summary><p class="note">Write <b>which stocks : columns WHERE condition SORT column DESC TOP n</b>. Stocks: <kbd>ALL</kbd> <kbd>ETF</kbd> <kbd>WATCH</kbd> <kbd>PORT</kbd>, a region (<kbd>US</kbd> <kbd>EU</kbd> <kbd>ASIA</kbd>), a sector (<kbd>TECHNOLOGY</kbd>, <kbd>FINANCIALS</kbd>…) or tickers. Columns are formulas: <kbd>ret6m / vol AS ratio</kbd>. Maths: <kbd>+ - * / ^ ( )</kbd>, <kbd>abs() sqrt() log() round() min(a,b) max(a,b)</kbd>; conditions: <kbd>&lt; &lt;= &gt; &gt;= == !=</kbd>, <kbd>and or not</kbd>. A number that doesn't exist (like a P/E when earnings are negative) never matches a condition.</p>
       <table class="tbl compact"><thead><tr><th class="l">Field</th><th class="l">Meaning</th></tr></thead><tbody>${Object.entries(FIELDS).map(([k, [, h]]) => `<tr><td class="l"><kbd>${k}</kbd></td><td class="l dim">${esc(h)}</td></tr>`).join('')}</tbody></table></details>
-      <p class="note">Works on the daily prices and quote figures Meridian already holds for its built-in stocks (about one year of history). Company filings (revenue growth, margins, debt) are not fields here: see <kbd>COMPARE</kbd>, <kbd>QUAL</kbd> and <kbd>VAL</kbd>. It's a screening tool, not advice.</p>`;
+      <p class="note">Works on the daily prices and quote figures Meridian already holds for its built-in stocks (about one year of history). The one exception is <kbd>fair</kbd> / <kbd>upside</kbd> (a model estimate from company filings, loaded on demand for the 40 biggest stocks of the query). Other filing figures (revenue growth, margins, debt) are not fields here: see <kbd>COMPARE</kbd>, <kbd>QUAL</kbd> and <kbd>VAL</kbd>. It's a screening tool, not advice.</p>`;
     const ta = box.querySelector('textarea');
     const out = box.querySelector('.bql-out');
     ta.value = text;
     let sortCol = null; // clicked header: { k, desc }
+    // fair / upside need each company's filings: loaded for the 40 biggest stocks of the query (two at a time), the table redraws as they arrive
+    const fairTried = new Set();
+    let fairTimer = null;
+    let fairNote = '';
+    const loadFair = (q) => {
+      fairNote = '';
+      if (E.mode !== 'live' || !/\b(fair|upside)\b/i.test(text)) return;
+      let insts;
+      try { insts = pickUniverse(E, q.universe); } catch { return; }
+      const stocks = insts.filter((i) => isStock(E, i));
+      const cand = stocks.sort((a, b) => (b.marketCap ?? b.shares * b.last ?? 0) - (a.marketCap ?? a.shares * a.last ?? 0)).slice(0, 40);
+      let got = 0;
+      for (const i of cand) {
+        if (fairOf(i.sym, i.last).fair != null) got++;
+        if (fairTried.has(i.sym)) continue;
+        fairTried.add(i.sym);
+        peek(E, i.sym, () => { clearTimeout(fairTimer); fairTimer = setTimeout(draw, 600); });
+      }
+      fairNote = `Fair price: ${got} of ${cand.length} loaded${stocks.length > cand.length ? ` (only the ${cand.length} biggest of ${stocks.length} stocks are loaded: name a sector, region or tickers to cover others)` : ''}; the others show “—” and never match a condition. It is a model estimate from stated assumptions, not a fact.`;
+    };
     const draw = () => {
       let q;
       try { q = parseQuery(text); } catch (err) {
         out.innerHTML = `<div class="empty st-bad">${esc(err.message)}</div>`;
         return;
       }
+      loadFair(q);
       let res;
       try { res = runQuery(E, q); } catch (err) {
         out.innerHTML = `<div class="empty st-bad">${esc(err.message)}</div>`;
@@ -293,7 +318,7 @@ register({
       let rows = res.rows;
       if (sortCol) rows = [...rows].sort((a, b) => (a.vals[sortCol.k] == null) - (b.vals[sortCol.k] == null) || (sortCol.desc ? -1 : 1) * ((a.vals[sortCol.k] ?? 0) - (b.vals[sortCol.k] ?? 0)));
       const dpOf = (c, v) => (Math.abs(v) >= 1000 ? 0 : Math.abs(v) >= 100 ? 1 : 2);
-      out.innerHTML = `<p class="note">${res.total} of ${res.universe} stocks match${res.total > rows.length ? `, showing ${rows.length}` : ''}. Tap a column to sort; tap a ticker to open it.</p>
+      out.innerHTML = `${fairNote ? `<p class="note">${esc(fairNote)}</p>` : ''}<p class="note">${res.total} of ${res.universe} stocks match${res.total > rows.length ? `, showing ${rows.length}` : ''}. Tap a column to sort; tap a ticker to open it.</p>
         <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Ticker</th><th class="l dim qname">Name</th>${q.cols.map((c, k) => `<th class="r" data-col="${k}" title="${esc(c.src)}" style="cursor:pointer">${esc(c.label)}${sortCol?.k === k ? (sortCol.desc ? ' ▼' : ' ▲') : ''}</th>`).join('')}</tr></thead><tbody>
         ${rows.map((r) => `<tr><td class="l">${secLink(r.i)}</td><td class="l dim qname">${esc(r.i.name)}</td>${r.vals.map((v) => `<td class="r">${v == null ? '<span class="dim">—</span>' : num(v, dpOf(null, v))}</td>`).join('')}</tr>`).join('') || `<tr><td class="l dim" colspan="${q.cols.length + 2}">No stock matches.</td></tr>`}
         </tbody></table></div>`;

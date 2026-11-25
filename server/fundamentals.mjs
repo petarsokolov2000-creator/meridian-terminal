@@ -873,13 +873,16 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
       } : null;
       const stats = {};
       for (const k of keys) {
+        // The window uses the years that exist: with Yahoo's ~4 fiscal years the "5y" column is a median over those 4 (span says so),
+        // and the 10y window only appears when it holds clearly more years than the 5y one (no duplicate columns, no padding with estimates).
         const s = (n) => {
-          const rows = hist.slice(-n);
+          const avail = a.years.length;
+          const span = Math.min(n, avail);
+          if (avail < 3 || (n > 5 && avail < 6)) return { n: 0, short: true, span: avail };
+          const rows = hist.slice(-span);
           const ok = rows.filter((h) => Number.isFinite(h[k]));
           const other = ok.filter((h) => h.src?.[k] && h.src[k] !== 'SEC').map((h) => `FY${h.fy}: ${h.src[k]}`);
-          // n/a when fewer years than the window: no padding with estimates
-          if (a.years.length < n) return { n: ok.length, short: true };
-          return { n: ok.length, median: median(ok.map((h) => h[k])), min: ok.length ? Math.min(...ok.map((h) => h[k])) : null, max: ok.length ? Math.max(...ok.map((h) => h[k])) : null, src: other.length ? other : null };
+          return { n: ok.length, span, median: median(ok.map((h) => h[k])), min: ok.length ? Math.min(...ok.map((h) => h[k])) : null, max: ok.length ? Math.max(...ok.map((h) => h[k])) : null, src: other.length ? other : null };
         };
         stats[k] = { y5: s(5), y10: s(10) };
       }

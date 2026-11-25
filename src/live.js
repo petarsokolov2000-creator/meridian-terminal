@@ -570,15 +570,19 @@ export class LiveEngine {
   statements(sym, freq) {
     return api(`/api/statements?symbol=${encodeURIComponent(this.get(sym).ysym)}&freq=${freq}`);
   }
+  // the Yahoo symbol of a built-in stock or of one of the extra companies that isn't opened yet
+  ys(sym) {
+    return (this.get(sym) || this.moreBySym?.get(String(sym).toUpperCase()))?.ysym || String(sym);
+  }
   details(sym) {
-    return api(`/api/details?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+    return api(`/api/details?symbol=${encodeURIComponent(this.ys(sym))}`);
   }
   events(sym) {
     return api(`/api/events?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
   /** Yahoo's figures compared with the SEC filing (never merged): rows with both values and a verdict. */
   verify(sym) {
-    return api(`/api/verify?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+    return api(`/api/verify?symbol=${encodeURIComponent(this.ys(sym))}`);
   }
   reportDates(sym) {
     return api(`/api/earnings-dates?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
@@ -591,7 +595,7 @@ export class LiveEngine {
     return api(`/api/annual?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
   }
   valuation(sym) {
-    return api(`/api/valuation?symbol=${encodeURIComponent(this.get(sym).ysym)}`);
+    return api(`/api/valuation?symbol=${encodeURIComponent(this.ys(sym))}`);
   }
   peers(sym) {
     return api(`/api/peers?symbol=${encodeURIComponent(this.get(sym).ysym)}`);

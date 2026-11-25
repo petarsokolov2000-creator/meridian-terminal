@@ -18,6 +18,17 @@ const MARK = {
 };
 
 /** The one-line verdict for the top of a screen. */
+/** Puts the one-line verdict at the top of a panel when the SEC cross-check finishes (silent when it can't run). */
+export function showVerdict(host, E, sym, isGone) {
+  const box = el('div', 'verify-line');
+  host.append(box);
+  E.verify(sym).then((vr) => {
+    const line = verdictLine(vr);
+    if (isGone() || !line) return box.remove();
+    box.innerHTML = `<span class="${line.cls}">${esc(line.text)}</span>`;
+  }).catch(() => box.remove());
+}
+
 export function verdictLine(v) {
   if (!v || v.state !== 'ok') return null;
   const { checked, agree, close, differs } = v.summary;

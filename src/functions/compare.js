@@ -73,12 +73,12 @@ const SECTIONS = [
     nowRow('pb', 'all'),
     { ...nowRow('ptbv', 'fin'), na: NOT_BANK }, { ...nowRow('divYield', 'fin'), na: NOT_BANK },
     {
-      label: `P/E vs its own 5-year median${help('median5y')}`, for: 'all', better: 'low',
+      label: `P/E vs its own history median${help('median5y')}`, for: 'all', better: 'low',
       cell: (c) => {
         const now = c.v.current.pe;
         const med = c.v.stats?.pe?.y5?.median;
         if (!fin(now)) return { v: null, html: na(c.v.currencyMismatch || c.v.current.meta?.pe?.why) };
-        if (!fin(med)) return { v: null, html: na(c.v.stats?.pe?.y5?.short ? 'fewer than 5 fiscal years of data' : 'no positive P/E in the last 5 fiscal years') };
+        if (!fin(med)) return { v: null, html: na(c.v.stats?.pe?.y5?.short ? 'fewer than 3 fiscal years of data' : 'no positive P/E in the fiscal years available') };
         const d = now / med - 1;
         return { v: d, html: `${d > 0 ? '+' : ''}${P(d, 0)} <span class="dim small">${X(now)} vs ${X(med)}</span>` };
       },

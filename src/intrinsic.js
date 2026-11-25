@@ -55,7 +55,7 @@ export function compute(v, { beta, rf, sym }) {
 }
 
 async function load(E, sym, v) {
-  const i = E.get(sym);
+  const i = E.get(sym) || E.moreBySym?.get(String(sym).toUpperCase());
   if (!isStock(E, i)) return none('only for company stocks, with real data');
   const val = v || await E.valuation(i.sym);
   let beta = null;
@@ -92,6 +92,19 @@ export function peek(E, sym, onReady) {
   if (hit && Date.now() - hit.at < TTL) return hit.res;
   if (!busy.has(sym)) intrinsic(E, sym).then(() => onReady?.(), (err) => onReady?.(err));
   return null;
+}
+
+// The finished result if there is one: never starts a load (for sorting and filtering columns).
+export function cachedResult(sym) {
+  const hit = done.get(sym);
+  return hit && Date.now() - hit.at < TTL ? hit.res : null;
+}
+
+// Fair price per share and how far the price is from it (+ = fair price above the price), or nulls.
+export function fairOf(sym, price) {
+  const r = cachedResult(sym);
+  if (!r || r.kind === 'none' || !(r.value > 0)) return { fair: null, upside: null };
+  return { fair: r.value, upside: fin(price) && price > 0 ? (r.value / price - 1) * 100 : null };
 }
 
 export function forget(sym) {

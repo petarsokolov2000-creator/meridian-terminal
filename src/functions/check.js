@@ -50,8 +50,8 @@ export const RULES = {
     ['sbc', 'Free cash flow', 'Stock-based pay / revenue, latest year', 'sbcRevenue', '<=', 0.05, 'pct'],
     ['ndEbitda', 'Debt', 'Net debt / EBITDA, latest year', 'netDebtEbitda', '<=', 2.5, 'x'],
     ['coverage', 'Debt', 'Interest coverage, latest year with interest reported', 'coverage', '>=', 8, 'x'],
-    ['pePrem', 'Valuation', 'P/E now vs its own 5-year median (premium)', 'pe', '<=', 0, 'rel'],
-    ['evPrem', 'Valuation', 'EV / EBITDA now vs its own 5-year median (premium)', 'evEbitda', '<=', 0, 'rel'],
+    ['pePrem', 'Valuation', 'P/E now vs its own history median (premium)', 'pe', '<=', 0, 'rel'],
+    ['evPrem', 'Valuation', 'EV / EBITDA now vs its own history median (premium)', 'evEbitda', '<=', 0, 'rel'],
     ['fcfYield', 'Valuation', 'FCF yield now', 'fcfYield', '>=', 0.04, 'pct'],
     ['dcfMos', 'Valuation', 'Margin of safety vs the base-case DCF', 'marginOfSafety', '>=', 0, 'rel'],
     ['shares5', 'Shareholders', 'Share count change over 5 years', 'shareCount', '<=', 0, 'rel'],
@@ -68,8 +68,8 @@ export const RULES = {
     ['bvps5', 'Growth', 'Book value per share growth per year, 5 years', 'bvps', '>=', 0.04, 'pct'],
     ['efficiency', 'Margins', 'Efficiency ratio, latest year (lower is better)', 'efficiency', '<=', 0.6, 'pct'],
     ['equityAssets', 'Debt', 'Common equity / total assets', 'equityToAssets', '>=', 0.07, 'pct'],
-    ['pbPrem', 'Valuation', 'P/B now vs its own 5-year median (premium)', 'pb', '<=', 0, 'rel'],
-    ['pePrem', 'Valuation', 'P/E now vs its own 5-year median (premium)', 'pe', '<=', 0, 'rel'],
+    ['pbPrem', 'Valuation', 'P/B now vs its own history median (premium)', 'pb', '<=', 0, 'rel'],
+    ['pePrem', 'Valuation', 'P/E now vs its own history median (premium)', 'pe', '<=', 0, 'rel'],
     ['divYield', 'Valuation', 'Dividend yield (dividends of the last 12 months)', 'divYield', '>=', 0.02, 'pct'],
     ['shares5', 'Shareholders', 'Share count change over 5 years', 'shareCount', '<=', 0, 'rel'],
   ],
@@ -108,9 +108,9 @@ export function checkValues(v, extra) {
   };
   const prem = (k) => {
     const st = v.stats[k]?.y5;
-    if (!st || st.short) return NA(`needs 5 fiscal years (${years.length} available)`);
+    if (!st || st.short) return NA(`needs at least 3 fiscal years (${years.length} available)`);
     if (!fin(v.current[k])) return NA(`now: ${v.current.meta?.[k]?.why || 'not computable'}`);
-    if (!fin(st.median) || st.median === 0) return NA('the 5-year median isn’t computable (negative or missing figures)');
+    if (!fin(st.median) || st.median === 0) return NA('the history median isn’t computable (negative or missing figures)');
     return { v: v.current[k] / st.median - 1, detail: `now (last 12 months) ${num(v.current[k], 1)}× vs median ${num(st.median, 1)}×`, mk: nowMk(k) + windowMark(st.src) };
   };
   const yearsWith = (key, thr) => {

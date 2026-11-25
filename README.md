@@ -106,7 +106,17 @@ appear as buttons (× deletes one); up to 20, kept in this browser or app.
 same figures in the company's SEC filing, with the gap in %. Up to 2% = same figure (✓), 2-5% = small gap (≈), above 5% = ⚠,
 open `FILE` and trust the filing. `CHECK` shows a one-line verdict from it. The SEC is only compared, never mixed into a
 number, so screens still can't disagree. Limits: US companies filing in US dollars only; per-share figures are skipped
-when a stock split happened after that year.
+when a stock split happened after that year. `VAL` and `DCF` show the same one-line verdict at the top.
+
+**`VAL` history:** Yahoo gives about 4 fiscal years, so the history columns are now a median and range over the years that
+exist and are labelled with the real number (e.g. "4Y median"), not left n/a. A separate 10Y column only appears when 6 or
+more years exist. Nothing is padded with estimates; for a longer history open `FILE`.
+
+**Fair price:** a model estimate of what one share is worth (the base-case DCF from `DCF`, which uses your edited inputs;
+banks and insurers: the Graham number). In `SCRN` press **◎ Fair price** to fill the *Fair price* and *Upside %* columns for
+the 40 biggest stocks that pass your filters (each company's statements have to be loaded, two at a time); `Upside %` can be
+sorted and filtered. In `BQL` use the fields `fair` and `upside`, e.g. `WATCH: px, fair, upside WHERE upside > 15 SORT upside DESC`.
+It is an estimate from stated assumptions, not a fact or advice.
 
 Add a Finnhub key once with **`FINNHUB yourkey`** in the command line. The server checks the key and saves it to
 `.finnhub-key` on this PC (git-ignored, never sent to the browser or kept in command history). `FINNHUB` shows the

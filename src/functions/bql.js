@@ -42,7 +42,7 @@ export const FIELDS = {
   cap: ['Mkt cap B', 'Market value in billions', (i) => { const c = i.marketCap ?? i.shares * i.last; return fin(c) ? c / 1e9 : null; }],
   yld: ['Div yld %', 'Dividend yield, %', (i) => fin(i.divYield)],
   volume: ['Volume', 'Shares traded today', (i) => fin(i.volume)],
-  fair: ['Fair price', 'Model estimate of what a share is worth: base-case DCF (banks and insurers: Graham number). Loaded on demand for the 40 biggest stocks of the query; an estimate, not a fact', (i) => fairOf(i.sym, i.last).fair],
+  fair: ['Fair price', 'Median of several models of what a share is worth (DCF, Graham, own-history P/E, EV/EBITDA, FCF yield). Loaded on demand for the 40 biggest stocks of the query; an estimate, not a fact', (i) => fairOf(i.sym, i.last).fair],
   upside: ['Upside %', 'Fair price vs price, %: + = price below the model estimate. Only for stocks whose fair price has loaded', (i) => fairOf(i.sym, i.last).upside],
   volx: ['Vol × avg', 'Today\'s volume compared with the usual daily volume', (i) => (i.adv > 0 && i.volume > 0 ? i.volume / i.adv : null)],
 };

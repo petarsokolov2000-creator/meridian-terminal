@@ -129,6 +129,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .intr-k { color: var(--dim); font-size: 11px; }
 .intr-v { color: var(--accent); font-size: 20px; line-height: 1.1; }
 .intr-p { font-size: 16px; line-height: 1.1; }
+.intr-models { flex: 1 1 100%; margin: 2px 0 0; }
+.intr-models td { padding: 1px 10px 1px 0; }
 .intr-note { flex: 1 1 100%; margin: 2px 0 0; line-height: 1.45; }
 .grid[data-layout='4'] { grid-template: minmax(0, 1fr) minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr); }
 .grid[data-layout='2'] { grid-template: minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr); }

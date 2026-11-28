@@ -86,12 +86,12 @@ const SECTIONS = [
   ]],
   ['Intrinsic value (an estimate from assumptions)', [
     {
-      label: `Intrinsic value per share${help('dcf')}`, for: 'all',
+      label: `Fair price per share (median of models)${help('dcf')}`, for: 'all',
       cell: (c) => {
         const r = c.intr;
         if (!r) return { v: null, html: na('not worked out') };
         if (r.kind === 'none') return { v: null, html: na(r.why) };
-        return { v: null, html: `<span title="${esc(r.note)}">${num(r.value, 2)}</span> <span class="dim small">${r.kind === 'graham' ? 'Graham no.' : r.edited ? 'DCF (yours)' : 'DCF base'}</span>` };
+        return { v: null, html: `<span title="${esc(r.note)}">${num(r.value, 2)}</span> <span class="dim small">${r.kind === 'blend' ? `median of ${r.models.length}` : r.kind === 'graham' ? 'Graham no.' : r.edited ? 'DCF (yours)' : 'DCF base'}</span>` };
       },
     },
     {
@@ -242,7 +242,7 @@ register({
         ${ok.length ? `<div class="tbl-wrap"><table class="tbl cmp-tbl"><thead><tr><th class="l">Measure</th>${cols.map(headCell).join('')}</tr></thead><tbody>${body}</tbody></table></div>` : ''}
         <p class="note"><span class="cmp-best">Green</span> = the lowest multiple, or the highest growth, margin or return in the row${cols.length >= 3 ? '; <span class="cmp-worst">red</span> = the other end' : ''}. This only orders the numbers: a low multiple can mean a cheap stock or a business in trouble. "Now" multiples use today's price and the last 12 months; margins, returns and debt use each company's latest fiscal year, and fiscal years end in different months, so the periods don't line up exactly. Growth is per year over 5 fiscal years. Tap a company for its own screens (<kbd>VAL</kbd>, <kbd>QUAL</kbd>), a marker for a number's source, an n/a for the reason.</p>
         ${partial.map((c) => `<p class="note"><b>${esc(c.inst.sym)}</b>: ${statusLine(c.v.status)}</p>`).join('')}
-        <p class="note">Sources: SEC EDGAR 10-K/10-Q figures first, then Yahoo and Finnhub for gaps (marked Y / F); prices from Yahoo Finance. Nothing is estimated, except the intrinsic value rows: those are a DCF (banks and insurers: the Graham number) built on stated assumptions, so treat them as a rough range, not a fact. Open <kbd>DCF</kbd> to change the assumptions.</p>`;
+        <p class="note">Sources: SEC EDGAR 10-K/10-Q figures first, then Yahoo and Finnhub for gaps (marked Y / F); prices from Yahoo Finance. Nothing is estimated, except the intrinsic value rows: those are the median of several simple models (DCF, Graham number and the company's own median multiples) built on stated assumptions, so treat them as a rough range, not a fact. Open <kbd>DCF</kbd> to change the assumptions.</p>`;
     };
 
     // two companies at a time: each one is dozens of SEC requests the first time

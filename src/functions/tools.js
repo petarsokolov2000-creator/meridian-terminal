@@ -150,8 +150,8 @@ const FIELDS = {
   yld: ['Div yld %', (i) => i.divYield, 2, 'Dividend yield'],
   beta: ['Beta', (i) => i.histBeta ?? null, 2, 'Moves with the market: 1 = same, under 1 = calmer'],
   vol: ['Vol %', (i) => (i.realVol == null ? null : i.realVol * 100), 0, 'Volatility: how much it swings in a year'],
-  // Fair price: an estimate from a model (base-case DCF; Graham number for banks and insurers), loaded on demand with the ◎ Fair price button
-  fair: ['Fair price', (i) => fairOf(i.sym, i.last).fair, 2, 'Model estimate of what one share is worth: base-case DCF (banks and insurers: Graham number). An estimate from stated assumptions, not a fact.'],
+  // Fair price: the median of several valuation models, loaded on demand with the ◎ Fair price button
+  fair: ['Fair price', (i) => fairOf(i.sym, i.last).fair, 2, 'Median of several models of what one share is worth (DCF, Graham number, own-history P/E, EV/EBITDA, FCF yield; banks: Graham, P/E, P/B). An estimate from stated assumptions, not a fact.'],
   upside: ['Upside %', (i) => fairOf(i.sym, i.last).upside, 0, 'Fair price vs the price: + means the price is below the model estimate, − above. Only filled for stocks whose fair price has been loaded (◎ Fair price button).'],
 };
 const val = (i, f) => (i.light && !i.priced && f !== 'px' ? null : finite(FIELDS[f][1](i)));
@@ -250,7 +250,7 @@ register({
     // Fair price: a model estimate per stock. It needs each company's filings, so it is loaded on demand for the 40 biggest stocks that pass the filters.
     let fairOn = E.mode === 'live' && store('scrn-fair', false);
     const fairBtn = el('button', 'tb', '');
-    fairBtn.title = 'Load a model-based fair price for the 40 biggest stocks that pass the filters (base-case DCF; banks and insurers: Graham number). Takes a while: every company needs its financial statements.';
+    fairBtn.title = 'Load a model-based fair price for the 40 biggest stocks that pass the filters (median of several models). Takes a while: every company needs its financial statements.';
     const drawFair = () => {
       fairBtn.textContent = `◎ Fair price: ${fairOn ? 'on' : 'off'}`;
       fairBtn.classList.toggle('on', fairOn);
@@ -389,7 +389,7 @@ register({
           fairTried.add(i.sym);
           peek(E, i.sym, () => { clearTimeout(fairTimer); fairTimer = setTimeout(update, 500); });
         }
-        fairNote = ` · fair price: ${got} of ${cand.length} loaded (the ${cand.length < 40 ? '' : '40 biggest '}stocks passing the filters; banks/insurers use the Graham number; "—" = model has no number)`;
+        fairNote = ` · fair price: ${got} of ${cand.length} loaded (the ${cand.length < 40 ? '' : '40 biggest '}stocks passing the filters; median of several models; "—" = no model had its inputs)`;
       }
       const rows = applyScreen(all, q).sort((a, b) => {
         const x = val(a, f);

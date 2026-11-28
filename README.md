@@ -112,8 +112,11 @@ when a stock split happened after that year. `VAL` and `DCF` show the same one-l
 exist and are labelled with the real number (e.g. "4Y median"), not left n/a. A separate 10Y column only appears when 6 or
 more years exist. Nothing is padded with estimates; for a longer history open `FILE`.
 
-**Fair price:** a model estimate of what one share is worth (the base-case DCF from `DCF`, which uses your edited inputs;
-banks and insurers: the Graham number). In `SCRN` press **◎ Fair price** to fill the *Fair price* and *Upside %* columns for
+**Fair price:** the **median of several valuation models**, so one odd model can't drag the number: the base-case DCF from `DCF`
+(uses your edited inputs), the Graham number, and the company's own history applied to today's figures (P/E, EV/EBITDA and
+FCF yield at their own median of the years Yahoo provides); banks and insurers use Graham, P/E and P/B instead. A model that lacks
+an input is left out, never guessed; the low–high range and every model's own number are shown at the top of `DES`
+(and in the hover text of `WATCH`/`COMPARE`), with a warning when the models disagree widely. In `SCRN` press **◎ Fair price** to fill the *Fair price* and *Upside %* columns for
 the 40 biggest stocks that pass your filters (each company's statements have to be loaded, two at a time); `Upside %` can be
 sorted and filtered. In `BQL` use the fields `fair` and `upside`, e.g. `WATCH: px, fair, upside WHERE upside > 15 SORT upside DESC`.
 It is an estimate from stated assumptions, not a fact or advice.
@@ -290,9 +293,9 @@ Commands: `UPDATE` (version / update check), `AAPL`, `AAPL CHART 1Y RSI MACD`, `
 try it if `STATUS` shows the SEC answering HTTP 403. `STATUS` tests every data source right now and shows each real answer, plus your version, API keys and
 notifications. `COMPARE AAPL MSFT GOOGL` puts two to five companies side by side (valuation, growth, margins,
 returns, debt, and an intrinsic value). Real company stocks also show an **intrinsic value** per share:
-in `WATCH` (columns Intrinsic and Safety), at the top of `DES`, and in `COMPARE`. It is the base case of the `DCF` screen
-(if you changed the assumptions there, yours are used); banks and insurers get the Graham number instead, because a
-DCF doesn't apply to them. It is an estimate from stated assumptions, not a fact.
+in `WATCH` (columns Intrinsic and Safety), at the top of `DES`, and in `COMPARE`. It is the median of several
+models (DCF base case incl. your edited assumptions, Graham number, own-history P/E, EV/EBITDA, FCF yield; banks and insurers:
+Graham, P/E, P/B, because a DCF doesn't apply to them). It is an estimate from stated assumptions, not a fact.
 **Foreign companies:** when a company reports in one currency and its share (or ADR) is quoted in another, `VAL`, `DCF`, the
 peer table and the intrinsic value convert the reported figures into the price currency (Yahoo's currency charts; the ECB
 rate of today if Yahoo has none) and say so on the screen, with the rate and its source. One rate (today's) is used for all

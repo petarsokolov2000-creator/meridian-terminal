@@ -63,13 +63,13 @@ register({
     const mon = quoteMonitor(ctx, () => list.map((s) => E.get(s)).filter(Boolean), {
       extra: [
         {
-          label: 'Intrinsic', title: 'Estimated value per share: base-case DCF (banks and insurers: Graham number). An estimate from stated assumptions, not a fact. Open DCF or VAL for the working.',
+          label: 'Intrinsic', title: 'Fair price per share: the median of several models (DCF, Graham number, the company\'s own median P/E, EV/EBITDA and FCF yield; banks: Graham, P/E, P/B). An estimate from stated assumptions, not a fact. Hover a number to see each model.',
           cls: 'r',
           value: (i) => {
             const r = intr(i);
             if (r === undefined) return '<span class="dim">—</span>';
             if (r === null) return '<span class="dim" title="loading the company filings (about 10 seconds the first time)">…</span>';
-            return r.kind === 'none' ? `<span class="dim" title="${esc(r.why)}">n/a</span>` : `<span title="${esc(r.note)}">${num(r.value, 2)}${r.kind === 'graham' ? ' <span class="dim small">G</span>' : ''}</span>`;
+            return r.kind === 'none' ? `<span class="dim" title="${esc(r.why)}">n/a</span>` : `<span title="${esc(r.note)}">${num(r.value, 2)}${r.kind === 'graham' ? ' <span class="dim small">G</span>' : r.kind === 'blend' ? ` <span class="dim small">${r.models.length}m</span>` : ''}</span>`;
           },
         },
         {

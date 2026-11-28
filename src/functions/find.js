@@ -46,13 +46,35 @@ function ensure(E, sym, onDone) {
   pump(E, onDone);
 }
 
+// ---- price figures, also for the extra companies --------------------------------------------------
+// The extra companies (i.light) have a quote but no daily price history: their 1-year change and 52-week high come
+// from Yahoo's quote, volatility / beta / RSI from the server's background job. The rest can't be worked out for them.
+const NO_HISTORY = new Set(['ret1m', 'ret3m', 'ret6m', 'vs50', 'vs200']);
+/** { v } the figure, { wait } still loading, or { why } can't be known */
+function quote(E, field, i) {
+  if (!i.light) { const v = FIELDS[field][2](i); return fin(v) ? { v } : { why: 'no figure for this stock' }; }
+  if (NO_HISTORY.has(field)) return { why: 'extra companies have no daily price history (open the company once to load it)' };
+  if (!i.priced) return E.moreState ? { why: 'no price from Yahoo for this company' } : { wait: true };
+  let v = null;
+  if (field === 'ret1y') v = i.chg52;
+  else if (field === 'offhigh') v = i.hi52 ? (i.last / Math.max(i.hi52, i.last) - 1) * 100 : null;
+  else if (field === 'rsi') v = i.rsiNow;
+  else if (field === 'vol') v = i.realVol == null ? null : i.realVol * 100;
+  else if (field === 'beta') v = i.histBeta;
+  else v = FIELDS[field][2](i);
+  if (fin(v)) return { v };
+  if (['rsi', 'vol', 'beta'].includes(field) && (E.statsState?.running || !E.statsState)) return { wait: true };
+  return { why: 'no figure for this stock' };
+}
+
 // ---- one rule on one stock -----------------------------------------------------------------------
 /** { s: 'pass'|'fail'|'na'|'wait', v: number|null, why?: string } */
 function judge(E, r, i) {
   const mt = METRICS[r.metric];
   if (mt.kind === 'q') {
-    const v = FIELDS[mt.field][2](i);
-    return fin(v) ? { s: check(r, v) ? 'pass' : 'fail', v } : { s: 'na', v: null, why: 'no figure for this stock' };
+    const q = quote(E, mt.field, i);
+    if (q.wait) return { s: 'wait', v: null };
+    return fin(q.v) ? { s: check(r, q.v) ? 'pass' : 'fail', v: q.v } : { s: 'na', v: null, why: q.why };
   }
   if (E.mode !== 'live') return { s: 'na', v: null, why: 'needs real company data (MODE LIVE)' };
   const f = filings.get(i.sym);
@@ -98,6 +120,16 @@ register({
     ta.value = text;
     let timer = null;
     const redraw = () => { clearTimeout(timer); timer = setTimeout(draw, 500); };
+    // the extra companies: their prices now (and every minute), RSI / beta / volatility from the server's background job
+    let statsTimer = null;
+    let moreTimer = null;
+    if (E.mode === 'live' && E.moreQuotes) {
+      const loadMore = () => E.moreQuotes().then(redraw, redraw);
+      const loadStats = () => E.moreStats().then((st) => { redraw(); if (st.running) statsTimer = setTimeout(loadStats, 6e3); }, redraw);
+      loadMore();
+      loadStats();
+      moreTimer = setInterval(loadMore, 60e3);
+    }
 
     const drawSaved = () => {
       const list = store('find:saved', []);
@@ -105,8 +137,9 @@ register({
     };
 
     function draw() {
-      const stocksAll = E.equities.filter((i) => !i.etf && i.history?.length >= 20);
-      const sectors = [...new Set(E.equities.filter((i) => !i.etf).map((i) => i.sector).filter(Boolean))];
+      const everyone = E.screenList ? E.screenList() : E.equities;
+      const stocksAll = everyone.filter((i) => !i.etf && (i.light || i.history?.length >= 20));
+      const sectors = [...new Set(stocksAll.map((i) => i.sector).filter(Boolean))];
       const P = parseRules(text, { sectors });
       const bad = P.unknown.length ? `<p class="note st-bad">Not understood, so <b>not applied</b>: ${P.unknown.map((u) => `“${esc(u)}”`).join(', ')}. Say it with a number, e.g. “P/E under 15” or “net margin over 10%”. See “What can I say?”.</p>` : '';
       if (!P.rules.length) {
@@ -115,6 +148,11 @@ register({
       }
       const where = [P.region ? `region ${P.region}` : '', ...P.sectors.map((s) => `sector ${s}`)].filter(Boolean);
       const stocks = stocksAll.filter((i) => (!P.region || i.region === P.region) && (!P.sectors.length || P.sectors.includes(i.sector)));
+      const extras = stocks.filter((i) => i.light).length;
+      const noHist = P.rules.some((r) => NO_HISTORY.has(METRICS[r.metric].field));
+      const st = E.statsState;
+      const extraNote = extras
+        ? `<p class="note dim">Includes ${extras} extra companies. ${st?.running ? `Working out their RSI, beta and volatility (${st.done} of ${st.total})… ` : ''}${noHist ? 'For them 1/3/6-month returns and 50/200-day averages show n/a (no daily history loaded), so they can only pass those rules if you open them first.' : ''}</p>` : '';
       const understood = `<p class="note">I understood: ${P.rules.map((r) => `<span class="chip">${esc(r.label)}</span>`).join(' ')}${where.length ? ` · only ${esc(where.join(', '))}` : ''} · searching ${stocks.length} stocks.</p>`;
       const needF = P.rules.some((r) => METRICS[r.metric].kind !== 'q');
       const needFair = P.rules.some((r) => METRICS[r.metric].kind === 'fair');
@@ -163,7 +201,7 @@ register({
       const t1 = hitAll.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${head}</tr></thead><tbody>${body(hitAll)}</tbody></table></div>`
         : `<div class="empty">${waiting ? 'No match so far…' : 'No stock passes all of your rules.'}${hitOne.length ? ' The closest ones are below.' : ' Loosen one rule and try again.'}</div>`;
       const t2 = hitOne.length ? `<details ${hitAll.length ? '' : 'open'}><summary>${hitOne.length} pass all but one rule (that one fails, or can't be checked: see ✗ / n/a)</summary><div class="tbl-wrap"><table class="tbl compact"><thead><tr>${head}</tr></thead><tbody>${body(hitOne)}</tbody></table></div></details>` : '';
-      out.innerHTML = `${bad}${understood}${progress}<p class="note"><b>${hitAll.length}</b> pass all ${P.rules.length} rule${P.rules.length === 1 ? '' : 's'}${waiting ? ' so far' : ''}. ✓ = passes, ✗ = fails, n/a = not reported (never counts as a pass). Tap a column to sort; tap a ticker to open it.</p>${fairNote}${t1}${t2}`;
+      out.innerHTML = `${bad}${understood}${extraNote}${progress}<p class="note"><b>${hitAll.length}</b> pass all ${P.rules.length} rule${P.rules.length === 1 ? '' : 's'}${waiting ? ' so far' : ''}. ✓ = passes, ✗ = fails, n/a = not reported (never counts as a pass). Tap a column to sort; tap a ticker to open it.</p>${fairNote}${t1}${t2}`;
       out.querySelector('thead')?.addEventListener('click', onSort(P.rules.length));
     }
     const onSort = () => (e) => {
@@ -193,7 +231,7 @@ register({
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); } });
     drawSaved();
     draw();
-    return { update: () => {}, destroy: () => clearTimeout(timer) };
+    return { update: () => {}, destroy: () => { clearTimeout(timer); clearTimeout(statsTimer); clearInterval(moreTimer); } };
   },
 });
 

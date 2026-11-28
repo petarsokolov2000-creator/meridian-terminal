@@ -112,6 +112,12 @@ when a stock split happened after that year. `VAL` and `DCF` show the same one-l
 exist and are labelled with the real number (e.g. "4Y median"), not left n/a. A separate 10Y column only appears when 6 or
 more years exist. Nothing is padded with estimates; for a longer history open `FILE`.
 
+**Fewer n/a in `VAL`:** two gaps that Yahoo leaves are now filled, each marked with how: (1) *debt* when Yahoo gives no total
+(EV/EBITDA, and the peer medians): long-term + current debt if listed, else 0 when the balance sheet lists no debt of any kind
+and almost no interest expense (a debt-free company); (2) *dividends per share* for banks and insurers (Dividend yield, now and
+history) from Yahoo's actual dividend payments. A figure that really doesn't exist (a loss-making company's P/E, a negative
+free cash flow) stays n/a and says why when you hover it.
+
 **Fair price:** the **median of several valuation models**, so one odd model can't drag the number: the base-case DCF from `DCF`
 (uses your edited inputs), the Graham number, and the company's own history applied to today's figures (P/E, EV/EBITDA and
 FCF yield at their own median of the years Yahoo provides); banks and insurers use Graham, P/E and P/B instead. A model that lacks

@@ -250,7 +250,7 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
 
   // Extra line items fetched with the statements but not shown in FA's tables: Meridian's
   // fallback for figures the SEC data lacks (server/fundamentals.mjs).
-  const EXTRA = ['OtherShortTermInvestments', 'Goodwill', 'OtherIntangibleAssets', 'PreferredStock', 'PurchaseOfBusiness', 'RepaymentOfDebt'];
+  const EXTRA = ['LongTermDebtAndCapitalLeaseObligation', 'CurrentDebtAndCapitalLeaseObligation', 'OtherShortTermInvestments', 'Goodwill', 'OtherIntangibleAssets', 'PreferredStock', 'PurchaseOfBusiness', 'RepaymentOfDebt'];
   // The "trailing" series (last 12 months) exist only for income and cash-flow items.
   const TRAILING = [...STATEMENTS.income, ...STATEMENTS.cashflow];
 
@@ -287,7 +287,29 @@ export function createYahoo({ fetchImpl = fetch } = {}) {
         }
       }
       if (!periods.size) throw Object.assign(new YahooError(`Yahoo has no ${f} statements for ${symbol}`, 404), { http: 'empty' });
-      return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency, layout: STATEMENTS };
+      // Yahoo leaves TotalDebt out for many companies. Fill it, and say how, in this order:
+      // (1) long-term + current debt (each with capital leases) when Yahoo lists those; (2) 0 when the balance sheet exists but
+      // lists no debt line at all and interest expense is absent or tiny (a debt-free company). Both are flagged in `derived`.
+      const derived = {};
+      if (f !== 'trailing') {
+        for (const end of periods) {
+          if (Number.isFinite(rows.TotalDebt?.[end])) continue;
+          const lt = rows.LongTermDebtAndCapitalLeaseObligation?.[end];
+          const cu = rows.CurrentDebtAndCapitalLeaseObligation?.[end];
+          if (Number.isFinite(lt) || Number.isFinite(cu)) {
+            (rows.TotalDebt ||= {})[end] = (Number.isFinite(lt) ? lt : 0) + (Number.isFinite(cu) ? cu : 0);
+            derived.TotalDebt = { ...derived.TotalDebt, [end]: 'long-term debt + current debt, as Yahoo lists them (it gave no total)' };
+            continue;
+          }
+          const assets = rows.TotalAssets?.[end];
+          const interest = Math.abs(rows.InterestExpense?.[end] ?? 0);
+          if (Number.isFinite(assets) && assets > 0 && Number.isFinite(rows.CashAndCashEquivalents?.[end]) && interest <= 0.005 * assets) {
+            (rows.TotalDebt ||= {})[end] = 0;
+            derived.TotalDebt = { ...derived.TotalDebt, [end]: 'Yahoo lists no debt of any kind on this balance sheet and almost no interest expense, so taken as 0 (debt-free)' };
+          }
+        }
+      }
+      return { freq: f, periods: [...periods].sort().slice(f === 'annual' ? -5 : -8), rows, currency, layout: STATEMENTS, derived };
     }, WEEK);
   }
 

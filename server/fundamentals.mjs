@@ -176,7 +176,8 @@ function yahooFrame(st) {
     for (const [end, v] of Object.entries(st.rows[name] || {})) {
       if (!Number.isFinite(v)) continue;
       if (!frame.has(end)) frame.set(end, {});
-      frame.get(end)[field] = { val: ABS.has(field) ? Math.abs(v) : v, info: { item: name } };
+      const note = st.derived?.[name]?.[end];
+      frame.get(end)[field] = { val: ABS.has(field) ? Math.abs(v) : v, info: note ? { item: name, note } : { item: name } };
     }
   }
   return frame;
@@ -452,8 +453,11 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
       let partial = false;
       // splits, for restating per-share figures filed before a split
       let splits = [];
+      let divEv = null; // Yahoo's dividend payments and the currency they are quoted in, for the dividends per share the filings lack
       try {
-        splits = (await yahoo.events(symbol)).splits || [];
+        const ev = await yahoo.events(symbol);
+        splits = ev.splits || [];
+        divEv = { list: ev.dividends || [], currency: ev.currency || null };
       } catch (err) {
         status.splits = failed(err);
         partial = true;
@@ -551,6 +555,20 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
         throw Object.assign(new Error(`no annual financial statements found for ${symbol}${why.length ? `: ${why.join('; ')}` : ''}${note ? ` (${note})` : ''}`), { status: why.length ? 502 : 404 });
       }
       years = years.slice(-12);
+      // dividends per share the filings don't give: Yahoo's dividend payments with ex-dates inside the fiscal year (split-adjusted like its prices).
+      // Only when they are quoted in the currency of the statements, because the figures are converted later. No payments in the year = 0.
+      if (financial && divEv && (!currency || !divEv.currency || divEv.currency === currency)) {
+        for (const y of years) {
+          if (y.dps != null) continue;
+          const to = Date.parse(y.end) / 1000;
+          const from = to - 365.25 * 86400;
+          // only years the payment history covers: a year before the first listed payment says nothing
+          if (!divEv.list.length || from < Math.min(...divEv.list.map((d) => d.date)) - 400 * 86400) continue;
+          const sum = divEv.list.filter((d) => d.date > from && d.date <= to).reduce((t, d) => t + d.amount, 0);
+          y.dps = sum;
+          y.src.dps = { s: 'Yahoo', item: 'dividend payments with ex-dates in the fiscal year' };
+        }
+      }
 
       // why each missing figure is missing
       const secWhy = (k) => (status.sec.state === 'failed' ? `SEC: ${failText(status.sec)}` : secData?.errs[k] ? `SEC: ${failText(secData.errs[k])}` : status.sec.state === 'none' ? 'not an SEC filer' : null);
@@ -582,7 +600,7 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
       }
 
       // "now": trailing 12 months
-      const now = await nowFigures(symbol, { secData, latestSec, years, splits, financial, status, set });
+      const now = await nowFigures(symbol, { secData, latestSec, years, splits, financial, status, set, divEv, currency });
       if (now.partial) partial = true;
 
       const filedDates = years.flatMap((y) => Object.values(y.src).map((s) => s.filed).filter(Boolean)).sort();
@@ -603,7 +621,7 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
   }
 
   // ---- "now" figures: TTM flows and the latest balance sheet ---------------------------------
-  async function nowFigures(symbol, { secData, latestSec, years, splits, financial, status }) {
+  async function nowFigures(symbol, { secData, latestSec, years, splits, financial, status, divEv, currency }) {
     const last = years[years.length - 1];
     const s = secData && latestSec && status.sec.state !== 'failed' ? secNow(secData.raw, latestSec, splits) : { flow: {}, bal: {} };
     const N = {};
@@ -649,7 +667,8 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
             N[f] = { val: null, conflict: { source: 'Yahoo', val: v, period: end, check: ann }, why: `sources disagree: in FY${ann.fy} the SEC and Yahoo figures are ${(ann.diff * 100).toFixed(1)}% apart (more than 2%)` };
             continue;
           }
-          N[f] = { val: v, basis: freq === 'trailing' ? 'TTM' : 'latest', src: 'Yahoo', end, check: ann, formula: make(name, end) };
+          const note = st.derived?.[name]?.[end];
+          N[f] = { val: v, basis: freq === 'trailing' ? 'TTM' : 'latest', src: 'Yahoo', end, check: ann, formula: note ? `${make(name, end)}: ${note}` : make(name, end) };
         }
       } catch (err) {
         if (err.http !== 'empty') {
@@ -660,6 +679,17 @@ export function createFundamentals({ sec = null, yahoo, finnhub = null, rates = 
     };
     await take('trailing', wantFlows, (name, end) => `Yahoo trailing 12 months to ${end} (${name})`);
     await take('quarterly', wantBals.filter((f) => f === 'shares' || YAHOO[f]), (name, end) => `Yahoo quarterly balance sheet, ${end} (${name})`);
+
+    // dividends per share, last 12 months, from Yahoo's payments (see annual()); 0 when none were paid in that time
+    if (financial && !(N.dps && N.dps.val != null) && !N.dps?.conflict && divEv?.list.length && (!currency || !divEv.currency || divEv.currency === currency)) {
+      const newest = Math.max(...divEv.list.map((d) => d.date));
+      // the payment history has to be current: a list that stops long ago may just be stale
+      if (Date.now() / 1000 - newest < 800 * 86400) {
+        const from = Date.now() / 1000 - 365.25 * 86400;
+        const sum = divEv.list.filter((d) => d.date > from).reduce((t, d) => t + d.amount, 0);
+        N.dps = { val: sum, basis: 'TTM', src: 'Yahoo', end: new Date(newest * 1000).toISOString().slice(0, 10), formula: `Yahoo dividend payments with ex-dates in the last 12 months (${divEv.list.filter((d) => d.date > from).length} payments)` };
+      }
+    }
 
     // still missing: the latest fiscal year, labelled FY
     for (const f of [...flows, ...bals, ...(financial ? [] : ['debt']), 'shares']) {

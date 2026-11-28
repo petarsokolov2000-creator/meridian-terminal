@@ -23,6 +23,7 @@ import './functions/breadth.js';
 import './functions/ovme.js';
 import './functions/mars.js';
 import './functions/bql.js';
+import './functions/find.js';
 import './functions/analysts.js';
 import './functions/notes.js';
 import './functions/insider.js';

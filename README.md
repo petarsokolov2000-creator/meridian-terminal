@@ -228,7 +228,7 @@ Finnhub `mockkey12345`, FRED `abcdefghijklmnopqrstuvwxyz012345`).
 | Area | Codes |
 | --- | --- |
 | Markets | `OVER` `WATCH` `INDX` `CMDY` `CRYP` `BREADTH` `SHIPS` `MACRO` |
-| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `PREVIEW` `DVD` `DIVCAL` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` |
+| Equity | `MOVE` `HEAT` `SCRN` `DESC` `CHART` `INTRA` `HIST` `PEERS` `FIN` `EPS` `HOLD` `INSIDER` `SI` `ALLOC` `PREVIEW` `DVD` `DIVCAL` `KEYS` `ANLY` `REV` `CRED` `COMPARE` `BQL` `FIND` |
 | Rates & FX | `FX` `CURVE` `GOVT` |
 | Calendars | `ECO` `EARN` `HOURS` |
 | News | `NEWS` `CN` `FILE` |
@@ -248,6 +248,7 @@ New in this release, in plain words:
   position, stress tests, long book against short book. `PORT` can now sell short (stocks and ETFs; `SELL` more than you hold,
   `BUY` covers; all shorts together can't exceed the net value).
 - `BQL`: your own screens as formulas: `BQL ALL: px, ret6m / vol AS ratio WHERE pe < 20 SORT ratio DESC TOP 15`.
+- `FIND`: find stocks that fit your rules without hours of clicking. Type them in plain English: `FIND profitable, debt under 2x EBITDA, below fair price, above 200-day average`. Meridian first shows what it understood (the exact tests it will run, e.g. "Net debt / EBITDA < 2") and lists anything it could not read, which is **not applied**: vague words such as "cheap" are refused on purpose, say "P/E under 15" instead. Price and trend rules (RSI, returns, 50/200-day averages, distance from the 52-week high, beta, volatility, market cap, dividend yield, P/E, "profitable") are checked at once on every stock. Rules about the company's finances (margins, growth, ROE, debt/EBITDA, EV/EBITDA, P/FCF, FCF yield, P/B, "profitable every year", "below fair price") load each company's filings for the 60 biggest stocks that pass your price rules (two at a time; the list fills in, and "Check 60 more" continues). Stocks that pass every rule come first, then the ones that pass all but one (a figure that is not reported shows "n/a" and never counts as a pass). Rule sets can be saved. It searches Meridian's built-in stocks, not the extra companies; it works from Yahoo data and the fair price is a model estimate.
 - `REV`: analyst EPS estimates now against 7/30/60/90 days ago, who raised or cut, price targets, latest rating changes;
   `REV WATCH` or `REV PORT` ranks your whole list by how estimates are moving.
 - `INSIDER`: insider trades of one stock (`AAPL INSIDER`): only real open-market buys and sells count (awards, option
